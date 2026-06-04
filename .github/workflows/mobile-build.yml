@@ -228,6 +228,19 @@ jobs:
           # doesn't need a signingConfig and produces the same APK
           # shape (debug-built) for the smoke build to upload.
           #
+          # v0.1.0: the gradle build itself signs the release APKs
+          # via the `signingConfigs.release` block in build.gradle
+          # (which reads keystore/keystore.properties). The
+          # post-build `scripts/sign-and-zipalign.sh` step that
+          # used to run after this was a no-op for gradle-signed
+          # output (the script globs `*-unsigned.apk` which
+          # doesn't match the signed APKs gradle produces), and
+          # removing it eliminates a confusing dead code path. If
+          # a future change to build.gradle ever removes the
+          # signingConfigs.release block, the sign-and-zipalign
+          # script can be re-introduced as a manual local-only
+          # tool — see the header comment in that script.
+          #
           # The 19th smoke run (#26930285356) reached 491 tasks
           # executed before failing on this; everything after Kotlin
           # compile (signing, manifest merge, resource link, AAB
@@ -238,15 +251,6 @@ jobs:
           else
             ./gradlew assembleDebug
           fi
-
-      - name: Sign and zipalign (release only)
-        if: startsWith(github.ref, 'refs/tags/mobile-v') && env.KEYSTORE_FILE_B64 != ''
-        env:
-          KEYSTORE_FILE: /tmp/release.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: hermes
-        run: bash scripts/sign-and-zipalign.sh
 
       - name: Generate latest.json (release only)
         if: startsWith(github.ref, 'refs/tags/mobile-v')

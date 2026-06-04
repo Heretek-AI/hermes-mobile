@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
-# sign-and-zipalign.sh — post-build step that signs the release APK
-# with the release keystore, then runs zipalign so the APK is
-# installable via adb install / Play Store / F-Droid.
+# sign-and-zipalign.sh — manual post-build step that signs the
+# release APK with the release keystore, then runs zipalign so
+# the APK is installable via adb install / Play Store / F-Droid.
 #
-# Called by .github/workflows/mobile-build.yml after `gradlew
-# assembleRelease`. The keystore + password come from the
-# environment (KEYSTORE_FILE base64, KEYSTORE_PASSWORD, KEY_PASSWORD)
-# so the secrets never live on disk in CI.
+# v0.1.0: NO LONGER CALLED FROM .github/workflows/mobile-build.yml.
+# The v0.1.0 release pipeline signs release APKs via the
+# `signingConfigs.release` block in apps/mobile/android/app/build.gradle,
+# which reads keystore/keystore.properties. This script is kept
+# as a manual tool for one-off local rebuilds that bypass the
+# gradle signing config (e.g. signing a hand-built APK with a
+# different key for testing). The glob in the loop below
+# (`*-unsigned.apk`) only matches the unsigned output of an
+# assembleRelease that has *no* signingConfig; gradle's default
+# `assembleRelease` produces signed output and this script is a
+# no-op against it. To use: set KEYSTORE_FILE / KEYSTORE_PASSWORD
+# / KEY_ALIAS / KEY_PASSWORD in the environment, then run
+# `./gradlew assembleRelease -Pandroid.injected.signing.enabled=false`
+# first to produce the unsigned APKs, then `bash scripts/sign-and-zipalign.sh`.
+#
+# The keystore + password come from the environment (KEYSTORE_FILE
+# base64, KEYSTORE_PASSWORD, KEY_PASSWORD) so the secrets never
+# live on disk in CI.
 
 set -euo pipefail
 

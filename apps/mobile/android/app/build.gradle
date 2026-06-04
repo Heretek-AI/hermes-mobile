@@ -158,12 +158,49 @@ android {
                 storePassword keystoreProperties.getProperty('storePassword')
                 keyAlias keystoreProperties.getProperty('keyAlias')
                 keyPassword keystoreProperties.getProperty('keyPassword')
-            } else {
-                // No keystore configured: the release variant will
-                // be unsigned. Acceptable for `gradlew assembleDebug`
-                // but the release CI must set KEYSTORE_FILE_B64 +
-                // KEYSTORE_PASSWORD env vars (handled by
-                // scripts/sign-and-zipalign.sh).
+            }
+            // No else: if storeFile is missing, the signingConfig
+            // has no properties. AGP will fail at package time
+            // with a clear error if a release build is attempted.
+            // We deliberately don't throw here at project-evaluation
+            // time because that would also fail debug-only tasks
+            // (assembleDebug, compileDebugKotlin) and break local
+            // dev + the smoke workflow.
+        }
+    }
+
+    // v0.1.0: hard fail-fast for release builds when the
+    // signing config is unusable. A silent unsigned APK
+    // shipping to a tag-triggered GitHub Release is a P0
+    // incident — every user who side-loads it would get an
+    // "untrusted signer" warning or, on older Android, a
+    // hard install block. The check fires only when a release
+    // task is actually scheduled, so debug-only invocations
+    // (compileDebugKotlin, assembleDebug) are unaffected.
+    gradle.taskGraph.whenReady {
+        def wantsRelease = gradle.startParameter.taskNames.any {
+            it.toLowerCase().contains('release') ||
+            it.toLowerCase().contains('bundlerelease') ||
+            it.toLowerCase().contains('packagerelease')
+        }
+        if (wantsRelease) {
+            def propsFile = rootProject.file("../../../keystore/keystore.properties")
+            def props = new Properties()
+            if (propsFile.exists()) {
+                propsFile.withInputStream { props.load(it) }
+            }
+            if (!props.getProperty('storeFile') ||
+                !props.getProperty('storePassword') ||
+                !props.getProperty('keyAlias') ||
+                !props.getProperty('keyPassword')) {
+                throw new GradleException(
+                    "Release signing config is missing or incomplete. " +
+                    "Generate keystore/keystore.properties with " +
+                    "storeFile, storePassword, keyAlias, keyPassword — " +
+                    "see keystore/README.md. The CI sets these from " +
+                    "the KEYSTORE_FILE_B64 / KEYSTORE_PASSWORD / " +
+                    "KEY_PASSWORD secrets on tag pushes (mobile-v*).",
+                )
             }
         }
     }
@@ -216,6 +253,19 @@ dependencies {
     // HermesAPIPlugin.kt bridge is also deleted (Phase 5
     // follows the same one-way-door as dropping the React
     // bundle: the Phase A native UI is the only client).
+
+    // v0.1.0: opt-in Sentry crash reporting. HermesApp.maybeInitSentry()
+    // calls SentryAndroid.init() only when the user has enabled
+    // crash reporting via Settings AND BuildConfig.SENTRY_DSN
+    // is non-empty. The open-source build ships with an empty
+    // SENTRY_DSN so the SDK is on the classpath but never makes
+    // a network call. Maintainers who want crash reporting build
+    // with `SENTRY_DSN=... ./gradlew assembleRelease`.
+    // 8.43.1 is the latest stable on Maven Central as of
+    // 2026-06; 8.x replaced the old `Sentry.init` API with
+    // `SentryAndroid.init(context, options -> ...)` —
+    // https://github.com/getsentry/sentry-java/blob/main/MIGRATION.md
+    implementation "io.sentry:sentry-android:8.43.1"
 
     // Phase A: Jetpack Compose stack. The BOM pins every compose-*
     // artifact to a single tested-together version. Picked 2024.12.01

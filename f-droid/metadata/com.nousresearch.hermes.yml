@@ -27,7 +27,13 @@ AuthorName: Nous Research
 AuthorWebSite: https://nousresearch.com
 SourceCode: https://github.com/Heretek-AI/hermes-mobile
 IssueTracker: https://github.com/Heretek-AI/hermes-mobile/issues
-Translation: https://github.com/Heretek-AI/hermes-mobile/tree/main/packages/shared/locales
+# v0.1.0: i18n hasn't landed yet — see v2 deferred items in
+# ~/.claude/plans/groovy-fluttering-island.md. The Translation:
+# URL was previously pointed at packages/shared/locales/ which
+# doesn't exist on main (the WebView+shared package was deleted
+# in Phase 0). Commented out until v0.2.0 ships an in-repo
+# locale source.
+# Translation: https://github.com/Heretek-AI/hermes-mobile/tree/main/locales
 
 # F-Droid rebuilds from source with their own signing key. The
 # `AllowedNonFreeLibraries` list is checked against the APK's
@@ -53,7 +59,15 @@ Builds:
       - bash ../../../scripts/setup.sh
       - bash ../../../f-droid/build.sh
     build:
-      - cd ..
+      # F-Droid's runner cd's to subdir (`apps/mobile/android`)
+      # before running the build block, so we are already in
+      # the right place. v0.1.0 fix: the previous `cd ..` was
+      # wrong — it landed in `apps/mobile/` where there is no
+      # gradlew. The prebuild step above also runs gradle
+      # assembleRelease (via f-droid/build.sh), but F-Droid's
+      # build contract runs the prebuild in a subshell, so the
+      # parent's working directory is unaffected and we still
+      # need to run gradle here for F-Droid's build verification.
       - ./gradlew assembleRelease
     ndk: r27d
     gradle: 8.7

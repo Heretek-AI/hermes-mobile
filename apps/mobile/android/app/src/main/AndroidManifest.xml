@@ -23,6 +23,40 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Phase 1.4: hermes:// deep links land here so
+                 MainActivity.onNewIntent can route them through
+                 HermesApi.handleOAuthCallback / emitDeepLink.
+                 Plan §1.4 / §5.5: this filter must be on
+                 MainActivity, not on OAuthBrowserActivity, so the
+                 user-visible activity is the one that receives
+                 the URI. -->
+            <intent-filter android:label="Hermes OAuth callback">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hermes" android:host="oauth-callback" />
+            </intent-filter>
+
+            <!-- Phase 5.3: hermes://chat/<sessionId> and
+                 hermes://skill/<name> URIs route into the nav
+                 graph. See MainActivity.handleIntent for the
+                 dispatch. -->
+            <intent-filter android:label="Hermes deep links">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hermes" />
+            </intent-filter>
+
+            <!-- Phase 1.3: ACTION_SEND text-share-sheet — the
+                 user shares text from another app; we pre-fill
+                 the chat input. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
         </activity>
 
         <!-- Phase A: BootReceiver was previously referenced from
@@ -61,18 +95,12 @@
         <!-- Phase A: OAuthBrowserActivity generates a CSRF state
              token, saves it to hermes_oauth prefs, then launches
              the system browser against the auth URL. The hermes://
-             deep link brings the user back to the app to complete
-             the device-code flow. -->
+             deep link brings the user back to MainActivity (see
+             the intent-filter on MainActivity above) which routes
+             the URI through HermesApi.handleOAuthCallback. -->
         <activity
             android:name=".OAuthBrowserActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="hermes" android:host="oauth-callback" />
-            </intent-filter>
-        </activity>
+            android:exported="true" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

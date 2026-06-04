@@ -5,6 +5,75 @@ All notable changes to hermes-mobile will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-06-04
+
+First public release. The 16-week desktop-parity plan at
+`~/.claude/plans/groovy-fluttering-island.md` lands as a single
+shipped artefact. Summary by phase:
+
+- **Phase 0 — Cleanup & architectural foundation:** WebView +
+  Capacitor + vendored renderer scaffolding removed; Compose is
+  the only UI runtime. `android-runner/` is the canonical Kotlin
+  source; CI drift-guard enforces the mirror to
+  `apps/mobile/android/`. `HermesAPIPlugin` reduced to a 130-line
+  no-op stub. Architecture documented at `docs/architecture.md`.
+- **Phase 1 — HermesApi surface expansion:** 44 → 152 typed
+  methods across 12 Kotlin files; file-IO-backed config/env/
+  models/soul/profiles/kanban/cron/skills/MCP/backup/logs paths
+  + gateway-backed transcribe/api-server-key/registry/update paths.
+  Type-shape fixes for `getBatteryOptStatus` /
+  `getStartOnBoot` / `stopVoiceCapture`. OAuth deep-link
+  routing via `MainActivity.onNewIntent`. New `CronJobEntity`
+  + `CronJobDao` (Room v2).
+- **Phase 2 — Onboarding flow:** `AppState` enum + flow on
+  `HermesApi`; 5 Compose screens (Splash / Welcome / Install /
+  Setup / Main) with 8-stage install progress + log tail.
+- **Phase 3 — Navigation:** 5 bottom-nav tabs + 12 overflow
+  destinations = 14 routes. `ModalBottomSheet` for the More tab.
+- **Phase 4 — Screen implementations:** Skills, Settings, Soul,
+  Models, Providers, Tools, Schedules, Gateway, Discover, Agents,
+  Office, Kanban, Persona. (Dashboard remains a `PlaceholderScreen`
+  stub.)
+- **Phase 5 — Polish:** Voice capture (mic button →
+  MediaRecorder → transcribeAudio), attachments (paperclip →
+  ACTION_GET_CONTENT → chips), long-press context menu
+  (Copy / Select), `hermes://chat/<id>` + `hermes://skill/<name>`
+  deep-link routing through `MainActivity.handleIntent` and
+  the Compose `NavHostController`, `ACTION_SEND` text-share-sheet
+  pre-fills the chat input.
+- **Phase 6 — Tests:** `HermesApiContractTest` (80+ tests),
+  `GatewayClientTest` (MockWebServer), `HermesNavGraphTest`
+  (instrumented).
+- **Phase 7 — Distribution & polish:** Real `SentryAndroid.init`
+  in `HermesApp.maybeInitSentry()` (gated on the user toggle +
+  non-empty `BuildConfig.SENTRY_DSN`); Sentry 8.43.1 dep.
+  Release signing config fails fast when `keystore.properties`
+  is missing (no more silent unsigned APKs). F-Droid
+  `build.sh` + metadata. GitHub Actions release pipeline
+  (signed APKs + `latest.json` + draft GitHub Release +
+  F-Droid artifact) on tag push (`mobile-v*`).
+- **Phase 8 — Chat E2E:** `GatewayClient` speaks OpenAI Chat
+  Completions at `POST /chat/completions`; defaults to
+  `MiniMax-M3` + `https://api.minimax.io/v1`; model and base
+  URL are read from `~/.hermes/config.yaml` so the user can
+  swap models without rebuilding. Welcome → Setup → Main
+  flow lands the user on a working chat.
+
+### Release artefacts
+
+- Signed universal + per-ABI APKs (GitHub Release, draft).
+- Unsigned universal APK (F-Droid rebuild).
+- `latest.json` for the in-app updater.
+
+### Known v0.1.0 limitations (deferred to v0.2.0)
+
+- Skill detail screen: `hermes://skill/<name>` lands on the
+  Skills tab but doesn't open a detail view yet.
+- iOS port, Play Store AAB, Bundled uv install, Hindi / PT
+  i18n, gateway auto-restart, Claw3D on mobile, multi-window,
+  Wear OS — see `~/.claude/plans/groovy-fluttering-island.md`
+  §"Open items deferred to v2".
+
 ## [Unreleased]
 
 ### Phase 0 (2026-06) — Cleanup & architectural foundation

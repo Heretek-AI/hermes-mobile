@@ -10,6 +10,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,10 +59,21 @@ import com.nousresearch.hermes.ui.tools.ToolsScreen
  * Phase 4 will replace the [PlaceholderScreen] composables
  * with real screens. The 4 bottom-nav items that already have
  * real screens (Chat, Sessions, Memory) wire up to them here.
+ *
+ * v0.1.0: the optional [onNavControllerReady] callback hands
+ * the [NavHostController] to the host activity
+ * ([com.nousresearch.hermes.MainActivity]) so deep-link
+ * routing in [com.nousresearch.hermes.MainActivity.handleIntent]
+ * can navigate to a tab from a cold-start intent or a
+ * notification. Defaults to a no-op.
  */
 @Composable
-fun HermesNavGraph(hermes: HermesApi) {
+fun HermesNavGraph(
+    hermes: HermesApi,
+    onNavControllerReady: (NavHostController) -> Unit = {},
+) {
     val navController = rememberNavController()
+    LaunchedEffect(navController) { onNavControllerReady(navController) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     var showMore by rememberSaveable { mutableStateOf(false) }
