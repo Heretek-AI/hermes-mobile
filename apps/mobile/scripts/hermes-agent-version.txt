@@ -1,0 +1,11 @@
+# Pinned commit SHA for NousResearch/hermes-agent.
+#
+# HermesInstaller clones hermes-agent at this SHA on first run (or `git
+# pull`s it for runHermesUpdate). Bump this file when the upstream
+# release cadence warrants it; the patch files in
+# apps/mobile/scripts/hermes-agent-patches/ are PR'd upstream and
+# removed once they land.
+#
+# Tracked in version control so releases are reproducible and a
+# `pnpm dev:mobile` run on a fresh checkout pins to the same commit.
+e7bc6189cf185f9c223a4428115147e483d9ff89
