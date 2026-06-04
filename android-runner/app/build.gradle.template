@@ -18,11 +18,17 @@ apply plugin: 'com.android.application'
 
 android {
     namespace 'com.nousresearch.hermes'
-    compileSdk 35  // Android 15
+    compileSdk 36  // Android 16 — androidx.core:core:1.17.0 and
+                   // androidx.activity:activity:1.11.0 (pulled in by
+                   // Capacitor 8) require compileSdk 36+. 35 fails
+                   // the AAR metadata check with:
+                   //   'Dependency androidx.core:core:1.17.0
+                   //    requires libraries ... to compile against
+                   //    version 36 or later of the Android APIs.'
     defaultConfig {
         applicationId 'com.nousresearch.hermes'
         minSdk 24     // Android 7.0
-        targetSdk 35
+        targetSdk 36
         versionCode 1
         versionName '0.1.0'
     }
