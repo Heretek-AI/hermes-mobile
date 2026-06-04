@@ -72,14 +72,32 @@
     </receiver>
 
     <!--
-      Deep-link handler for `hermes://<screen>/<id>` URLs.
-      Example: hermes://chat/<sessionId>, hermes://skill/<slug>.
+      Phase A: SSH tunnel service. Wraps `ssh -N -L ...` to forward
+      a local port to a remote hermes-agent gateway. Not a foreground
+      service — its lifetime is bound to the host activity.
     -->
-    <intent-filter android:autoVerify="false">
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="hermes" />
-    </intent-filter>
+    <service
+        android:name=".SshTunnelService"
+        android:enabled="true"
+        android:exported="false" />
+
+    <!--
+      Phase A: OAuth device-code browser activity. Generates a CSRF
+      state token, saves it to hermes_oauth prefs, launches the
+      system browser against the auth URL, and re-parses the
+      `hermes://oauth-callback?code=...&state=...` deep link to
+      close the device-code flow.
+    -->
+    <activity
+        android:name=".OAuthBrowserActivity"
+        android:enabled="true"
+        android:exported="true">
+        <intent-filter android:label="Hermes OAuth callback">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="hermes" android:host="oauth-callback" />
+        </intent-filter>
+    </activity>
 
 </manifest>
