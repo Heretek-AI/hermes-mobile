@@ -48,6 +48,10 @@ buildscript {
         // "Plugin with id 'org.jetbrains.kotlin.plugin.compose'
         // not found."
         classpath 'org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.2.20'
+        // Phase 2: KSP for Room's annotation processor. Room
+        // 2.6.1+ supports KSP; using kapt with Kotlin 2.x emits
+        // metadata-version warnings and is being phased out.
+        classpath 'com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:2.2.20-2.0.4'
     }
 }
 
@@ -59,6 +63,10 @@ apply plugin: 'kotlin-android'
 // Compose runtime libraries (BOM + ui + material3) are pulled in
 // via the dependencies block below.
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+// Phase 2: KSP for Room. The Room compiler reads @Entity /
+// @Dao / @Database annotations and emits the generated
+// implementation classes at compile time.
+apply plugin: 'com.google.devtools.ksp'
 // apply plugin: 'com.android.bundle'  // Phase 6: for Play Store AAB (v2, not v1)
 // apply plugin: 'io.sentry.android.gradle'  // Phase 6 opt-in
 
@@ -96,6 +104,13 @@ android {
     // lifting; the gate is the buildFeatures.compose flag.
     buildFeatures {
         compose true
+        // Phase 7.4: Sentry DSN is exposed to HermesApp.maybeInitSentry
+        // via BuildConfig.SENTRY_DSN. The DSN comes from the
+        // SENTRY_DSN env var (CI sets it from a secret); the
+        // open-source build ships with an empty string so the
+        // crash-reporting toggle is a no-op for users who haven't
+        // built their own.
+        buildConfig = true
     }
     defaultConfig {
         applicationId 'com.nousresearch.hermes'
@@ -103,6 +118,10 @@ android {
         targetSdk 36
         versionCode 1
         versionName '0.1.0'
+        // Phase 7.4: BuildConfig field for the Sentry DSN. The
+        // CI sets SENTRY_DSN as a secret; the open-source build
+        // gets an empty string.
+        buildConfigField "String", "SENTRY_DSN", "\"${System.getenv('SENTRY_DSN') ?: ''}\""
     }
 
     // Phase 6: ABI splits per plan §G.2.
@@ -139,12 +158,49 @@ android {
                 storePassword keystoreProperties.getProperty('storePassword')
                 keyAlias keystoreProperties.getProperty('keyAlias')
                 keyPassword keystoreProperties.getProperty('keyPassword')
-            } else {
-                // No keystore configured: the release variant will
-                // be unsigned. Acceptable for `gradlew assembleDebug`
-                // but the release CI must set KEYSTORE_FILE_B64 +
-                // KEYSTORE_PASSWORD env vars (handled by
-                // scripts/sign-and-zipalign.sh).
+            }
+            // No else: if storeFile is missing, the signingConfig
+            // has no properties. AGP will fail at package time
+            // with a clear error if a release build is attempted.
+            // We deliberately don't throw here at project-evaluation
+            // time because that would also fail debug-only tasks
+            // (assembleDebug, compileDebugKotlin) and break local
+            // dev + the smoke workflow.
+        }
+    }
+
+    // v0.1.0: hard fail-fast for release builds when the
+    // signing config is unusable. A silent unsigned APK
+    // shipping to a tag-triggered GitHub Release is a P0
+    // incident — every user who side-loads it would get an
+    // "untrusted signer" warning or, on older Android, a
+    // hard install block. The check fires only when a release
+    // task is actually scheduled, so debug-only invocations
+    // (compileDebugKotlin, assembleDebug) are unaffected.
+    gradle.taskGraph.whenReady {
+        def wantsRelease = gradle.startParameter.taskNames.any {
+            it.toLowerCase().contains('release') ||
+            it.toLowerCase().contains('bundlerelease') ||
+            it.toLowerCase().contains('packagerelease')
+        }
+        if (wantsRelease) {
+            def propsFile = rootProject.file("../../../keystore/keystore.properties")
+            def props = new Properties()
+            if (propsFile.exists()) {
+                propsFile.withInputStream { props.load(it) }
+            }
+            if (!props.getProperty('storeFile') ||
+                !props.getProperty('storePassword') ||
+                !props.getProperty('keyAlias') ||
+                !props.getProperty('keyPassword')) {
+                throw new GradleException(
+                    "Release signing config is missing or incomplete. " +
+                    "Generate keystore/keystore.properties with " +
+                    "storeFile, storePassword, keyAlias, keyPassword — " +
+                    "see keystore/README.md. The CI sets these from " +
+                    "the KEYSTORE_FILE_B64 / KEYSTORE_PASSWORD / " +
+                    "KEY_PASSWORD secrets on tag pushes (mobile-v*).",
+                )
             }
         }
     }
@@ -192,7 +248,24 @@ dependencies {
     // Bumped from 2.51.1 → 2.52 to support Kotlin 2.x compiler.
     implementation "com.google.dagger:hilt-android:2.52"
     implementation "androidx.work:work-runtime-ktx:2.9.1"
-    implementation project(':capacitor-android')
+    // Phase 5: Capacitor is gone. The WebView is no longer
+    // instantiated — the Compose tree replaces it. The
+    // HermesAPIPlugin.kt bridge is also deleted (Phase 5
+    // follows the same one-way-door as dropping the React
+    // bundle: the Phase A native UI is the only client).
+
+    // v0.1.0: opt-in Sentry crash reporting. HermesApp.maybeInitSentry()
+    // calls SentryAndroid.init() only when the user has enabled
+    // crash reporting via Settings AND BuildConfig.SENTRY_DSN
+    // is non-empty. The open-source build ships with an empty
+    // SENTRY_DSN so the SDK is on the classpath but never makes
+    // a network call. Maintainers who want crash reporting build
+    // with `SENTRY_DSN=... ./gradlew assembleRelease`.
+    // 8.43.1 is the latest stable on Maven Central as of
+    // 2026-06; 8.x replaced the old `Sentry.init` API with
+    // `SentryAndroid.init(context, options -> ...)` —
+    // https://github.com/getsentry/sentry-java/blob/main/MIGRATION.md
+    implementation "io.sentry:sentry-android:8.43.1"
 
     // Phase A: Jetpack Compose stack. The BOM pins every compose-*
     // artifact to a single tested-together version. Picked 2024.12.01
@@ -213,7 +286,42 @@ dependencies {
     // navigation-compose for the 5-tab bottom nav (Phase A: Chat
     // is functional; Sessions/Skills/Memory/Settings are placeholders).
     implementation "androidx.navigation:navigation-compose:2.8.4"
+    // Phase 2: Room for the local chat messages DB. Bumped to
+    // 2.7.0-alpha10 because 2.6.1 + KSP 2.0.4 + Kotlin 2.2.0 has
+    // a known bug where the generated _Impl.java has
+    // `insert(MessageEntity, Continuation<Long>)` (no wildcard)
+    // while Kotlin's suspend fun compiles to
+    // `insert(MessageEntity, Continuation<? super Long>)`. The
+    // name-clash errors fail the build. 2.7.0 fixed this.
+    implementation "androidx.room:room-runtime:2.7.0-alpha10"
+    implementation "androidx.room:room-ktx:2.7.0-alpha10"
+    ksp "androidx.room:room-compiler:2.7.0-alpha10"
+    // Phase 2: OkHttp for the SSE chat stream. The plan said
+    // this is transitive of lifecycle-service:2.8.7, but the
+    // resolved dep tree didn't include it (lifecycle-service
+    // only needs WorkManager, not OkHttp). Add explicitly.
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    // Phase 4: Markwon for markdown rendering in chat message
+    // rows. The desktop uses react-markdown + remark-gfm +
+    // highlight.js; Markwon is the de-facto Kotlin equivalent.
+    // ~500KB to APK but covers the same feature set.
+    implementation "io.noties.markwon:core:4.6.2"
+    implementation "io.noties.markwon:ext-tables:4.6.2"
+    implementation "io.noties.markwon:ext-strikethrough:4.6.2"
+    implementation "io.noties.markwon:linkify:4.6.2"
     debugImplementation "androidx.compose.ui:ui-tooling"
+    debugImplementation "androidx.compose.ui:ui-test-manifest"
+
+    // Phase 6: unit-test stack. JUnit 4 is what the AndroidX test
+    // runner expects; MockK + Turbine are the de-facto Kotlin
+    // mocks + flow testing libs.
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "io.mockk:mockk:1.13.10"
+    testImplementation "app.cash.turbine:turbine:1.1.0"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1"
+    testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
+    // Compose UI test for the chat / nav screens
+    androidTestImplementation "androidx.compose.ui:ui-test-junit4"
     debugImplementation "androidx.compose.ui:ui-test-manifest"
 }
 
@@ -228,8 +336,10 @@ dependencies {
 // compiled into the APK. This `apply from` re-enables the autolink
 // (see Tier 3 of /tmp/hermes-smoke/PARITY.md for the full IPC
 // surface analysis).
-apply from: 'capacitor.build.gradle'
-
+// Phase 5: Capacitor autolink removed. The WebView is gone,
+// the HermesAPIPlugin is deleted, and the React bundle is
+// removed from assets/public. The 14 autolinked plugin
+// projects are no longer needed.
 // Force the Kotlin stdlib to match the kotlin-gradle-plugin version
 // (2.2.20). Without this, transitive Capacitor plugin deps can
 // resolve to a different stdlib and break the compile classpath

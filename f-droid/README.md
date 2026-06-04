@@ -31,9 +31,9 @@ build script.
 
 F-Droid's CI runs `f-droid/build.sh` in a clean container with
 pinned versions:
-- NDK r26b
+- NDK r27d (LTS; matches the gradle.properties `ndkVersion`)
 - Gradle 8.7
-- OpenJDK 17
+- OpenJDK 21
 - Node 22
 - pnpm 9
 

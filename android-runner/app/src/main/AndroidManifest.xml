@@ -112,20 +112,17 @@
     <!--
       Phase A: OAuth device-code browser activity. Generates a CSRF
       state token, saves it to hermes_oauth prefs, launches the
-      system browser against the auth URL, and re-parses the
-      `hermes://oauth-callback?code=...&state=...` deep link to
-      close the device-code flow.
+      system browser against the auth URL. The `hermes://oauth-
+      callback?code=...&state=...` deep link is delivered to
+      MainActivity (which carries the intent-filter in the live
+      manifest's <application> block); MainActivity.onNewIntent
+      routes it to HermesApi.handleOAuthCallback. We do NOT
+      attach the intent-filter here — the device-code flow's
+      target is MainActivity, not this activity.
     -->
     <activity
         android:name=".OAuthBrowserActivity"
         android:enabled="true"
-        android:exported="true">
-        <intent-filter android:label="Hermes OAuth callback">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="hermes" android:host="oauth-callback" />
-        </intent-filter>
-    </activity>
+        android:exported="true" />
 
 </manifest>
