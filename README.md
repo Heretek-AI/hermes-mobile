@@ -82,7 +82,7 @@ native plugin (via `@PluginMethod` Kotlin) implement the same 188-method surface
 | 3 | Foreground service: gateway runs as Android 14+ `specialUse` FGS, supervisor restarts on crash | ✅ done |
 | 4 | Chat polish: highlight.js swap (1.6MB savings), voice capture, file picker, IME composition | ✅ done |
 | 5 | Full 20-screen parity: per-screen mobile layouts, kanban mobile, SSH tunnel, OAuth login | ✅ done |
-| 6 | Distribution: signed APK, F-Droid metadata, GitHub Actions | not started |
+| 6 | Distribution: signed APK, F-Droid metadata, GitHub Actions, latest.json updater | ✅ done |
 
 ## Phase 5 — full 20-screen parity
 
@@ -154,6 +154,132 @@ On-device:
 - Tap the bottom-nav tabs; the Layout switches panes (no router, just internal state).
 - Open Kanban; columns stack vertically at < 640dp.
 - Open Sessions; the table becomes a list of cards at < 640dp.
+
+## Phase 6 — distribution
+
+The release pipeline: signed APK → GitHub Releases (with `latest.json` for the in-app updater) and F-Droid (reproducible build from source). Sideload-first; Play Store is deferred to v2.
+
+### Code signing (`keystore/`)
+
+The release key is a 25-year RSA 4096 keystore, generated once by the maintainer:
+
+```bash
+keytool -genkey -v -keystore keystore/release.jks -alias hermes \
+  -keyalg RSA -keysize 4096 -validity 9125 \
+  -dname "CN=Hermes Agent, OU=Mobile, O=Nous Research, L=San Francisco, S=California, C=US"
+```
+
+`keystore/keystore.properties.template` is checked in (with `CHANGEME` placeholders). The real `keystore.properties` and `release.jks` are gitignored. CI uses four encrypted secrets:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_FILE_B64` | base64 of `release.jks` |
+| `KEYSTORE_PASSWORD` | the keystore password |
+| `KEY_PASSWORD` | the key password |
+| `KEY_ALIAS` | `hermes` |
+
+`android-runner/app/build.gradle.template` has the `signingConfigs.release` block that reads `keystore.properties`. `scripts/sign-and-zipalign.sh` is the post-build step that decodes the base64 secret, signs, and zipaligns (zipalign must run on the unsigned APK because alignment is part of the v2 signature).
+
+### ABI splits
+
+```gradle
+splits {
+    abi {
+        enable true
+        reset()
+        include 'arm64-v8a'     // mandatory
+        include 'armeabi-v7a'  // optional, 32-bit legacy
+        include 'x86_64'       // emulators + Chromebooks
+        universalApk true
+    }
+}
+```
+
+The universal APK is what F-Droid packages (their build infrastructure doesn't run per-ABI apksigner). GitHub Releases emits all four (3 ABIs + universal) so users can pick the smaller architecture-specific build.
+
+### GitHub Actions (`.github/workflows/mobile-build.yml`)
+
+Three triggers:
+
+- `push` to tags matching `mobile-v*` (e.g. `mobile-v0.1.0`) — full release build, sign, publish draft release with APKs + `latest.json`.
+- `schedule` weekly Sunday 02:00 UTC — smoke build against `main` of hermes-agent, upload debug APK as artifact (catches upstream drift).
+- `workflow_dispatch` — manual trigger for ad-hoc builds.
+
+The release job:
+1. pnpm install (cached by lockfile hash)
+2. pnpm run build (renderer + IPC + mobile)
+3. vendor-renderer.sh
+4. Decode `KEYSTORE_FILE_B64` to a temp file
+5. Generate `keystore/keystore.properties` from secrets
+6. `cap sync android` + `./gradlew assembleRelease`
+7. `scripts/sign-and-zipalign.sh` (signs + zipaligns)
+8. `scripts/write-update-manifest.sh` (emits `latest.json`)
+9. `softprops/action-gh-release@v2` (publishes draft release with APKs + `latest.json`)
+10. `f-droid/build.sh` (reproducible build for F-Droid)
+
+### `latest.json` updater manifest
+
+Emitted by `scripts/write-update-manifest.sh`:
+
+```json
+{
+  "versionName": "0.1.0",
+  "versionCode": 1,
+  "url": "https://github.com/.../hermes-mobile-v0.1.0-universal.apk",
+  "releaseNotes": "https://github.com/.../releases/tag/mobile-v0.1.0",
+  "assets": {
+    "arm64-v8a": { "url": "...", "sha256": "...", "size": 7000000 },
+    "armeabi-v7a": { "url": "...", "sha256": "...", "size": 6500000 },
+    "x86_64": { "url": "...", "sha256": "...", "size": 7200000 }
+  }
+}
+```
+
+The `HermesAPI.checkForUpdates` IPC method reads this from `releases.nousresearch.com/hermes-mobile/latest.json`, compares the versionCode against `BuildConfig.VERSION_CODE`, and if newer, downloads the matching ABI-specific build and triggers the system install intent via `Intent.ACTION_VIEW` with a `FileProvider` URI.
+
+### F-Droid (`f-droid/`)
+
+- `metadata/com.nousresearch.hermes.yml` — the fdroiddata-format metadata file with `AllowedNonFreeLibraries: []` (no proprietary deps), `AutoUpdate: Version` mode, and per-ABI `Builds:` entries.
+- `build.sh` — reproducible build script run by F-Droid's CI. Uses `--no-build-cache --scan` to avoid cache layer timestamps. Empty `keystore.properties` because F-Droid signs with their own key.
+- `README.md` — submission instructions and reproducibility rationale.
+
+Sentry is opt-in and NOT bundled for F-Droid builds. The Sentry Android SDK has a closed-source component that violates F-Droid's allowed-nonfree list; we gate the dep behind a build flavor and only include it for the GitHub Releases track.
+
+### Sentry opt-in (crash reporting)
+
+`HermesAPI.setCrashReportingEnabled` / `getCrashReportingEnabled` IPC methods persist the user's choice to `SharedPreferences("hermes_sentry")`. The Sentry SDK init is wired in `MainActivity.onCreate` when the flag flips on. Default off — users must explicitly opt in via Settings.
+
+### Accessibility audit (`scripts/audit-a11y.sh`)
+
+A heuristic a11y checker that runs against the vendored renderer:
+
+- `<img>` without `alt` attribute
+- `<button>` without `aria-label` or text content
+- `<a href>` without text content
+- Clickable elements with width/height under 40px (Android minimum is 48dp)
+- Color values with potentially-low contrast
+
+Exits non-zero on findings. Run from CI on every release. The desktop's vendored renderer is the source of truth for accessibility — a full axe-core audit is a v2 follow-up.
+
+### Hindi locale (i18n)
+
+`packages/shared/locales/hi/common.json` — Phase 6 i18n addition. The desktop ships 10 locales; we add Hindi for the mobile launch because Android marketshare in India is large and English-only has been the primary adoption barrier. Japanese and Korean follow in Phase 7.
+
+## Verification (Phase 6)
+
+```bash
+# Local sign + build:
+cp keystore/keystore.properties.template keystore/keystore.properties
+# fill in real values
+cp android-runner/app/build.gradle.template apps/mobile/android/app/build.gradle
+cd apps/mobile/android && ./gradlew assembleRelease
+bash ../../scripts/sign-and-zipalign.sh
+apksigner verify --print-certs apps/mobile/android/app/build/outputs/apk/release/app-universal-release.apk
+```
+
+On CI: tag `mobile-v0.1.0` and push. The workflow produces a draft GitHub Release with the four APK variants (3 ABIs + universal) and `latest.json`. The F-Droid build artifact is uploaded separately; F-Droid rebuilds from source with their own signing key.
+
+In-app: the user's installed app calls `HermesAPI.checkForUpdates` on launch, sees the new versionCode in `latest.json`, downloads the matching ABI APK, and triggers the system install intent. The renderer surfaces a "Hermes N is available — tap to install" notification.
 
 ## Quick start
 
