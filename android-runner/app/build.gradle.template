@@ -13,7 +13,7 @@
 //     (we ship via GitHub Releases + F-Droid, not Play Store).
 
 apply plugin: 'com.android.application'
-apply plugin: 'com.android.bundle'  // Phase 6: for Play Store AAB
+// apply plugin: 'com.android.bundle'  // Phase 6: for Play Store AAB (v2, not v1)
 // apply plugin: 'io.sentry.android.gradle'  // Phase 6 opt-in
 
 android {
@@ -90,18 +90,13 @@ android {
 
     // Phase 6: Play Store App Bundle (AAB). Not used in v1 (we ship
     // via GitHub Releases + F-Droid) but the config is here for
-    // when we add a Play Store track.
-    bundle {
-        language {
-            enableSplit = true
-        }
-        density {
-            enableSplit = true
-        }
-        abi {
-            enableSplit = true
-        }
-    }
+    // when we add a Play Store track. Re-enable the
+    // 'com.android.bundle' plugin above when we do.
+    // bundle {
+    //     language { enableSplit = true }
+    //     density  { enableSplit = true }
+    //     abi      { enableSplit = true }
+    // }
 }
 
 dependencies {

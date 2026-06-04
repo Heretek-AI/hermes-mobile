@@ -171,19 +171,7 @@ jobs:
         # Injects the HermesAPIPlugin Kotlin sources from android-runner/
         # into the generated android/ project. Real failures must surface
         # (no || true — earlier this masked missing-android-dir errors).
-        # DEBUG: -x to surface the failing line.
-        run: bash -x apps/mobile/scripts/setup-android.sh 2>&1 | tail -40
-
-      - name: Copy build.gradle template
-        # The Phase 6 build.gradle.template layers ABI splits +
-        # signingConfigs.release on top of the default scaffold that
-        # `cap add android` produces. Always overwrite — the cap
-        # default doesn't have these. The inner `if` guards the
-        # missing-template edge case (would never happen on this repo).
-        run: |
-          if [[ -f android-runner/app/build.gradle.template ]]; then
-            cp android-runner/app/build.gradle.template apps/mobile/android/app/build.gradle
-          fi
+        run: bash apps/mobile/scripts/setup-android.sh
 
       - name: Run cap sync
         # Copies the Vite-built web assets + plugins into the
@@ -192,8 +180,23 @@ jobs:
         # the colon to distinguish scripts from positional args, so
         # the previous `cap sync android` invocation (no colon)
         # failed with "None of the selected packages has a 'cap'
-        # script".
+        # script". Must run BEFORE the build.gradle template copy —
+        # cap sync can regenerate build.gradle from its own
+        # template, so we have to be the last word.
         run: pnpm --filter @hermes-mobile/app cap:sync
+
+      - name: Copy build.gradle template
+        # The Phase 6 build.gradle.template layers ABI splits +
+        # signingConfigs.release on top of the default scaffold that
+        # `cap add android` produces, and survives `cap sync`. This
+        # step must run AFTER cap sync — the 6th smoke run failed
+        # at Gradle with 'compileSdk not specified' because cap
+        # sync was re-creating build.gradle from its own scaffold
+        # template and overwriting our copy.
+        run: |
+          if [[ -f android-runner/app/build.gradle.template ]]; then
+            cp android-runner/app/build.gradle.template apps/mobile/android/app/build.gradle
+          fi
 
       - name: Gradle assembleRelease
         working-directory: apps/mobile/android
