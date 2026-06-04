@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest additions for the HermesAPIPlugin and the
+  GatewayForegroundService / BootReceiver. This file is *merged* into
+  the Capacitor-generated AndroidManifest.xml by `cap sync android`.
+  Do not put application-level entries here; only <service>,
+  <receiver>, and <uses-permission> tags that the merge step will
+  combine with the default Capacitor manifest.
+
+  Run `bash apps/mobile/scripts/setup-android.sh` after the first
+  `npx cap add android` to copy this fragment into the generated
+  project, and to register HermesAPIPlugin in MainActivity.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nousresearch.hermes"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Network for chat / API / remote mode -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Foreground service — specialUse for long-running agent gateway -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Phase 4: file picker + voice capture + share + biometric -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!--
+      Long-running AI gateway foreground service. The
+      `foregroundServiceType="specialUse"` requires a justification
+      property, declared inline below. Android 14+ (UPSIDE_DOWN_CAKE)
+      strictly enforces that the runtime ServiceInfo type matches the
+      manifest; we pass `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` from
+      GatewayForegroundService.startInForeground().
+    -->
+    <service
+        android:name=".GatewayForegroundService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="Long-running AI agent gateway with HTTP/SSE chat, scheduled cron tasks, and 16 messaging platform integrations. Killing the process terminates the user's assistant and breaks the user-facing chat UI." />
+    </service>
+
+    <!--
+      Boot autostart receiver. Opt-in: only fires the foreground
+      service if the user has flipped the "start on boot" toggle in
+      the renderer's Settings screen. Must be exported so the system
+      can deliver the BOOT_COMPLETED broadcast; we don't accept any
+      other actions.
+    -->
+    <receiver
+        android:name=".BootReceiver"
+        android:enabled="true"
+        android:exported="true"
+        tools:ignore="ExportedReceiver">
+        <intent-filter android:priority="1000">
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+            <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+        </intent-filter>
+    </receiver>
+
+    <!--
+      Deep-link handler for `hermes://<screen>/<id>` URLs.
+      Example: hermes://chat/<sessionId>, hermes://skill/<slug>.
+    -->
+    <intent-filter android:autoVerify="false">
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="hermes" />
+    </intent-filter>
+
+</manifest>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hermes Agent</string>
+
+    <!-- Foreground service notification (Phase 3) -->
+    <string name="gateway_notif_title">Hermes Agent</string>
+    <string name="gateway_notif_text">Gateway running on localhost:8642</string>
+    <string name="gateway_notif_action_stop">Stop</string>
+    <string name="gateway_notif_action_open">Open Hermes</string>
+
+    <!-- Termux-missing install dialog (Phase 2) -->
+    <string name="termux_missing_title">Termux Required</string>
+    <string name="termux_missing_message">To run hermes-agent locally on Android, install Termux and Termux:API from F-Droid. Then return to Hermes to continue.</string>
+    <string name="termux_install_action">Open F-Droid</string>
+
+    <!--
+      Pinned hermes-agent SHA. Updated by bumping
+      apps/mobile/scripts/hermes-agent-version.txt and re-running
+      `bash apps/mobile/scripts/setup-android.sh`. HermesInstaller
+      reads this at git-clone time and at runHermesUpdate time.
+    -->
+    <string name="hermes_agent_pinned_sha">e7bc6189cf185f9c223a4428115147e483d9ff89</string>
+</resources>
