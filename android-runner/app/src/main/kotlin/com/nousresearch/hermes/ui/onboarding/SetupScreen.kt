@@ -41,6 +41,7 @@ import com.nousresearch.hermes.HermesApi
  * [HermesApi.setConfig] and creates the profile directory via
  * [HermesApi.createProfile]. Then routes to Main.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(hermes: HermesApi) {
     val providers = listOf("openai", "anthropic", "ollama", "local")
@@ -56,6 +57,8 @@ fun SetupScreen(hermes: HermesApi) {
     var profileName by remember { mutableStateOf("default") }
     var providerExpanded by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var remoteUrl by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -122,6 +125,28 @@ fun SetupScreen(hermes: HermesApi) {
             modifier = Modifier.fillMaxWidth(),
         )
 
+        // Connection (remote gateway) — only when the user picked
+        // "Connect to remote gateway" on the Welcome screen
+        Text(
+            "Connection (optional, for remote gateway)",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        OutlinedTextField(
+            value = remoteUrl,
+            onValueChange = { remoteUrl = it },
+            label = { Text("Gateway URL (e.g. http://192.168.1.10:8642)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { apiKey = it },
+            label = { Text("API key (or bearer token)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         error?.let {
             Text(
                 text = it,
@@ -152,7 +177,17 @@ fun SetupScreen(hermes: HermesApi) {
                 } else {
                     hermes.setActiveProfile(profileName)
                 }
-                // 3. advance to Main
+                // 3. persist connection config (remote gateway)
+                if (remoteUrl.isNotBlank()) {
+                    hermes.setConnectionConfig(
+                        mode = "remote",
+                        remoteUrl = remoteUrl,
+                        apiKey = apiKey,
+                    )
+                } else {
+                    hermes.setConnectionConfig("local", "", "")
+                }
+                // 4. advance to Main
                 hermes.setAppState(HermesApi.AppState.Main)
             },
             modifier = Modifier.fillMaxWidth(),

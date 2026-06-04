@@ -14,7 +14,7 @@ import androidx.room.Query
 interface CronJobDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(job: CronJobEntity)
+    suspend fun insert(job: CronJobEntity): Long
 
     @Query("SELECT * FROM cron_jobs ORDER BY name ASC")
     suspend fun listAll(): List<CronJobEntity>
@@ -26,7 +26,7 @@ interface CronJobDao {
     suspend fun setEnabled(id: String, enabled: Boolean): Int
 
     @Query("UPDATE cron_jobs SET last_run = :timestamp WHERE id = :id")
-    suspend fun setLastRun(id: String, timestamp: Long)
+    suspend fun setLastRun(id: String, timestamp: Long): Int
 
     @Query("SELECT * FROM cron_jobs WHERE id = :id LIMIT 1")
     suspend fun findById(id: String): CronJobEntity?

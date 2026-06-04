@@ -1738,10 +1738,8 @@ class HermesApi(private val context: Context) {
 
     fun mediaFileExists(path: String): Boolean = File(path).exists()
 
-    fun getPathForFile(name: String): String {
-        val f = File(context.filesDir, "media/$name")
-        return if (f.exists()) f.absolutePath else ""
-    }
+    // getPathForFile() is defined above (Phase 1 stub at line ~589)
+    // The single-arg variant looks up media files in filesDir/media/
 
     /** Stage an attachment (base64 encoded) for a chat session.
      *  Returns the file path on disk; the chat composer attaches
@@ -1773,8 +1771,7 @@ class HermesApi(private val context: Context) {
     }
 
     // ── Folder / file pickers (Phase 4 polish) ─────────────────
-
-    fun selectFolder(): String = "" // v1: not implemented; see Phase 5
+    // selectFolder() is defined above (Phase 1 stub at line ~580)
 
     fun readDirectory(path: String): List<String> {
         val d = File(path)
@@ -2032,28 +2029,38 @@ class HermesApi(private val context: Context) {
         val nextRun: Long?,
     )
 
-    fun listCronJobs(): List<CronJob> = database.cronJobDao().listAll().map { e ->
-        CronJob(
-            id = e.id, name = e.name, cronExpr = e.cronExpr, command = e.command,
-            enabled = e.enabled, lastRun = e.lastRun, nextRun = e.nextRun,
-        )
+    fun listCronJobs(): List<CronJob> = kotlinx.coroutines.runBlocking {
+        database.cronJobDao().listAll().map { e ->
+            CronJob(
+                id = e.id, name = e.name, cronExpr = e.cronExpr, command = e.command,
+                enabled = e.enabled, lastRun = e.lastRun, nextRun = e.nextRun,
+            )
+        }
     }
 
     fun createCronJob(job: CronJob): CronJob {
-        database.cronJobDao().insert(
-            com.nousresearch.hermes.db.CronJobEntity(
-                id = job.id, name = job.name, cronExpr = job.cronExpr, command = job.command,
-                enabled = job.enabled, lastRun = job.lastRun, nextRun = job.nextRun,
-            ),
-        )
+        kotlinx.coroutines.runBlocking {
+            database.cronJobDao().insert(
+                com.nousresearch.hermes.db.CronJobEntity(
+                    id = job.id, name = job.name, cronExpr = job.cronExpr, command = job.command,
+                    enabled = job.enabled, lastRun = job.lastRun, nextRun = job.nextRun,
+                ),
+            )
+        }
         return job
     }
 
-    fun removeCronJob(id: String): Boolean = database.cronJobDao().delete(id) > 0
+    fun removeCronJob(id: String): Boolean = kotlinx.coroutines.runBlocking {
+        database.cronJobDao().delete(id) > 0
+    }
 
-    fun pauseCronJob(id: String): Boolean = database.cronJobDao().setEnabled(id, false) > 0
+    fun pauseCronJob(id: String): Boolean = kotlinx.coroutines.runBlocking {
+        database.cronJobDao().setEnabled(id, false) > 0
+    }
 
-    fun resumeCronJob(id: String): Boolean = database.cronJobDao().setEnabled(id, true) > 0
+    fun resumeCronJob(id: String): Boolean = kotlinx.coroutines.runBlocking {
+        database.cronJobDao().setEnabled(id, true) > 0
+    }
 
     /** Trigger a cron job by posting its command to the gateway.
      *  The gateway is the source of truth for the actual run. */
@@ -2132,8 +2139,11 @@ class HermesApi(private val context: Context) {
     // ── API-server key (gateway-backed) ────────────────────────
 
     suspend fun getApiServerKeyStatus(): Map<String, Any?> =
-        runCatching { gatewayClient()?.requestJson("GET", "/v1/api-server/key") ?: emptyMap() }
-            .getOrDefault(mapOf("hasKey" to false))
+        runCatching {
+            val obj = gatewayClient()?.requestJson("GET", "/v1/api-server/key")
+            if (obj == null) emptyMap()
+            else mapOf("hasKey" to (obj.optBoolean("hasKey", false)))
+        }.getOrDefault(mapOf("hasKey" to false))
 
     suspend fun generateApiServerKey(): String =
         gatewayClient()?.request("POST", "/v1/api-server/key", mapOf("generate" to "true"))

@@ -35,7 +35,7 @@ fun PersonaScreen(hermes: HermesApi) {
     var tab by remember { mutableStateOf(0) }
     val soul = remember { hermes.readSoul() }
     val user = remember { hermes.readUserProfile() }
-    val memory by remember { mutableStateOf(hermes.readMemory()) }
+    val memory = remember { kotlinx.coroutines.runBlocking { hermes.readMemory() } }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {

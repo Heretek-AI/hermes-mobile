@@ -1,5 +1,6 @@
 package com.nousresearch.hermes.ui.chat
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,7 +38,7 @@ import com.nousresearch.hermes.chat.MessageEntity
  * Phase 5 polish: long-press on a chat bubble opens a
  * [MessageContextMenu] with Copy + Select actions.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(hermes: HermesApi) {
     val viewModel: ChatViewModel = viewModel(
