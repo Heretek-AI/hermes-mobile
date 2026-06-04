@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.security.SecureRandom
 
@@ -254,11 +255,23 @@ class HermesInstaller(private val context: Context) {
      *  Backend-aware: on Termux, dispatches via
      *  [TermuxRunner.runAndWait] (real exit code + truncated
      *  stdout/stderr via `RUN_COMMAND_PENDING_INTENT`). Suspend
-     *  per Workstream C — callers must be in a coroutine context. */
+     *  per Workstream C — callers must be in a coroutine context.
+     *
+     *  Follow-up B8b: the Termux branch is wrapped in
+     *  [withTimeoutOrNull] with [DOCTOR_TIMEOUT_MS]. The doctor is
+     *  fast in practice; if it hangs that long, the install is wedged
+     *  and we want the stage to fail loudly rather than block forever. */
     suspend fun runHermesDoctor(): BundledPythonRunner.PythonResult = when (currentBackend()) {
-        Backend.TERMUX -> termux.runAndWait(
-            command = "./venv/bin/hermes doctor",
-            cwd = hermesRepo.absolutePath,
+        Backend.TERMUX -> withTimeoutOrNull(DOCTOR_TIMEOUT_MS) {
+            termux.runAndWait(
+                command = "./venv/bin/hermes doctor",
+                cwd = hermesRepo.absolutePath,
+            )
+        } ?: BundledPythonRunner.PythonResult(
+            exitCode = -1,
+            stdout = "",
+            stderr = "hermes doctor: timed out after ${DOCTOR_TIMEOUT_MS / 1000}s",
+            process = null,
         )
         Backend.BUNDLED -> bundled.runPython(
             argv = listOf("-m", "hermes_cli.main", "doctor"),
@@ -272,9 +285,25 @@ class HermesInstaller(private val context: Context) {
         )
     }
 
-    /** `git pull` hermes-agent at the pinned SHA and re-apply patches. */
+    /** `git pull` hermes-agent at the pinned SHA and re-apply patches.
+     *
+     *  Follow-up NIT-3: (a) the "is installed?" check switches from
+     *  `hermesRepo.exists()` (always false on Termux backend because our
+     *  app can't see Termux's $PREFIX) to the marker pattern from
+     *  Workstream C's validation patch; (b) after a successful update,
+     *  re-run `hermes doctor` and refresh [hermesVerifiedMarker] so
+     *  `checkInstall().verified` continues to report true. If the
+     *  post-update doctor fails, the marker is deleted so the next
+     *  `checkInstall` bounces the user back to Welcome rather than
+     *  silently using a broken install. */
     suspend fun runHermesUpdate(): UpdateResult = withContext(Dispatchers.IO) {
-        if (!hermesRepo.exists()) {
+        val backend = currentBackend()
+        val alreadyInstalled = when (backend) {
+            Backend.TERMUX -> hermesRepoClonedMarker.exists()
+            Backend.BUNDLED -> hermesRepo.exists()
+            Backend.NONE -> false
+        }
+        if (!alreadyInstalled) {
             return@withContext UpdateResult(false, "hermes-agent not installed yet")
         }
         emit(1, 3, "Pulling hermes-agent", "git fetch + reset to pinned SHA", "")
@@ -290,6 +319,22 @@ class HermesInstaller(private val context: Context) {
         emit(3, 3, "Reinstalling Python deps", "pip install -e .[termux-all] -U", "")
         val deps = runPipInstall()
         if (deps.exitCode != 0) return@withContext UpdateResult(false, "pip install failed: ${deps.stderr}")
+
+        // Post-update verification: re-run the doctor and refresh the
+        // verified marker. A doctor failure here means the update
+        // broke something — delete the marker so checkInstall.verified
+        // returns false and the user is forced to re-install.
+        val doctor = runHermesDoctor()
+        if (doctor.exitCode != 0) {
+            try { hermesVerifiedMarker.delete() } catch (e: Exception) { /* non-fatal */ }
+            return@withContext UpdateResult(false, "post-update doctor failed: ${doctor.stderr.take(500)}")
+        }
+        try {
+            hermesVerifiedMarker.parentFile?.mkdirs()
+            hermesVerifiedMarker.writeText("verified-at=${System.currentTimeMillis()}\nbackend=${backend.name}\nsource=update\n")
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to refresh verified marker after update: ${e.message}")
+        }
         UpdateResult(true, null)
     }
 
@@ -308,6 +353,21 @@ class HermesInstaller(private val context: Context) {
                 "Neither Termux nor bundled Python is available",
                 "Install Termux and Termux:API from F-Droid, or use the network-download option.",
                 error = "no_python_backend",
+            )
+            return
+        }
+        // Follow-up B8a: enforce Termux ≥ 0.109. Older Termux silently
+        // drops the RUN_COMMAND_PENDING_INTENT extra, so runAndWait
+        // would block the install forever waiting for a result that
+        // never arrives. Fail fast with an actionable message instead.
+        if (backend == Backend.TERMUX && !TermuxProbe.isRunCommandResultSupported(context)) {
+            val version = TermuxProbe.termuxVersion(context) ?: "unknown"
+            emit(
+                1, 8, "Termux too old",
+                "Termux $version detected, but RUN_COMMAND_PENDING_INTENT " +
+                    "support requires Termux ≥ 0.109. Update Termux from F-Droid.",
+                "",
+                error = "termux_too_old",
             )
             return
         }
@@ -446,9 +506,16 @@ class HermesInstaller(private val context: Context) {
     }
 
     private suspend fun runPipInstall(): BundledPythonRunner.PythonResult = when (currentBackend()) {
-        Backend.TERMUX -> termux.runAndWait(
-            command = "./venv/bin/pip install -e .[termux-all] -c constraints-termux.txt --disable-pip-version-check --no-cache-dir",
-            cwd = hermesRepo.absolutePath,
+        Backend.TERMUX -> withTimeoutOrNull(PIP_INSTALL_TIMEOUT_MS) {
+            termux.runAndWait(
+                command = "./venv/bin/pip install -e .[termux-all] -c constraints-termux.txt --disable-pip-version-check --no-cache-dir",
+                cwd = hermesRepo.absolutePath,
+            )
+        } ?: BundledPythonRunner.PythonResult(
+            exitCode = -1,
+            stdout = "",
+            stderr = "pip install: timed out after ${PIP_INSTALL_TIMEOUT_MS / 60000} min",
+            process = null,
         )
         Backend.BUNDLED -> bundled.runPython(
             argv = listOf(
@@ -540,17 +607,26 @@ class HermesInstaller(private val context: Context) {
                     Log.w(TAG, "patch $name: write to Termux tmp failed: ${write.stderr.take(200)}")
                     continue
                 }
-                val check = runShell(listOf("git", "apply", "--check", tmpPatch), cwd = hermesRepo)
-                if (check.exitCode != 0) {
-                    Log.w(TAG, "patch $name: git apply --check failed; skipping: ${check.stderr.take(200)}")
-                    continue
+                // Follow-up NIT-2: always clean up the temp file inside
+                // Termux's $PREFIX/tmp once we've written it, regardless
+                // of whether --check or apply succeed. Without this, every
+                // install run leaks one .patch per asset into Termux's
+                // tmp dir. The rm failure is itself non-fatal.
+                try {
+                    val check = runShell(listOf("git", "apply", "--check", tmpPatch), cwd = hermesRepo)
+                    if (check.exitCode != 0) {
+                        Log.w(TAG, "patch $name: git apply --check failed; skipping: ${check.stderr.take(200)}")
+                        continue
+                    }
+                    val apply = runShell(listOf("git", "apply", tmpPatch), cwd = hermesRepo)
+                    if (apply.exitCode != 0) {
+                        Log.w(TAG, "patch $name: git apply failed: ${apply.stderr.take(200)}")
+                        continue
+                    }
+                    Log.i(TAG, "patch $name: applied")
+                } finally {
+                    runShell(listOf("rm", "-f", tmpPatch), cwd = hermesRepo)
                 }
-                val apply = runShell(listOf("git", "apply", tmpPatch), cwd = hermesRepo)
-                if (apply.exitCode != 0) {
-                    Log.w(TAG, "patch $name: git apply failed: ${apply.stderr.take(200)}")
-                    continue
-                }
-                Log.i(TAG, "patch $name: applied")
             }
         } catch (e: Exception) {
             Log.w(TAG, "applyPatches failed: ${e.message}")
@@ -602,13 +678,30 @@ class HermesInstaller(private val context: Context) {
      * the install UI surfaces verbatim (see
      * [com.nousresearch.hermes.ui.onboarding.InstallScreen]'s
      * permission-needed guidance card).
+     *
+     * Follow-up B8b: wraps the dispatch in [withTimeoutOrNull] so a
+     * hung Termux session (e.g. an old version that silently dropped
+     * `RUN_COMMAND_PENDING_INTENT`, or a permission state that doesn't
+     * surface as an explicit error) fails the stage cleanly instead of
+     * blocking the install indefinitely. Cancellation of the outer
+     * coroutine propagates to [TermuxRunner.runAndWait]'s
+     * `invokeOnCancellation`, which unregisters the BroadcastReceiver
+     * cleanly (no leak).
      */
     private suspend fun runShellViaTermux(
         argv: List<String>,
         cwd: File? = null,
+        timeoutMs: Long = DEFAULT_SHELL_TIMEOUT_MS,
     ): BundledPythonRunner.PythonResult {
         val command = argv.joinToString(" ") { shellQuote(it) }
-        return termux.runAndWait(command, cwd = cwd?.absolutePath)
+        return withTimeoutOrNull(timeoutMs) {
+            termux.runAndWait(command, cwd = cwd?.absolutePath)
+        } ?: BundledPythonRunner.PythonResult(
+            exitCode = -1,
+            stdout = "",
+            stderr = "TermuxRunner: timed out after ${timeoutMs / 1000}s waiting for RUN_COMMAND result",
+            process = null,
+        )
     }
 
     /** POSIX-safe single-quote escaping for a single shell argument. */
@@ -680,12 +773,14 @@ class HermesInstaller(private val context: Context) {
      *  path is async. */
     suspend fun getHermesVersion(): String? = when (currentBackend()) {
         Backend.TERMUX -> {
-            val r = termux.runAndWait(
-                command = "./venv/bin/python -c " +
-                    "'import importlib.metadata; print(importlib.metadata.version(\"hermes-agent\"))'",
-                cwd = hermesRepo.absolutePath,
-            )
-            if (r.exitCode == 0) r.stdout.trim().takeIf { it.isNotEmpty() } else null
+            val r = withTimeoutOrNull(VERSION_TIMEOUT_MS) {
+                termux.runAndWait(
+                    command = "./venv/bin/python -c " +
+                        "'import importlib.metadata; print(importlib.metadata.version(\"hermes-agent\"))'",
+                    cwd = hermesRepo.absolutePath,
+                )
+            }
+            if (r != null && r.exitCode == 0) r.stdout.trim().takeIf { it.isNotEmpty() } else null
         }
         Backend.BUNDLED -> {
             if (!hermesPython.exists()) {
@@ -717,5 +812,15 @@ class HermesInstaller(private val context: Context) {
 
     companion object {
         private const val TAG = "HermesInstaller"
+
+        // Follow-up B8b: timeouts for the four classes of Termux
+        // dispatch we make. Each is sized to "well above the longest
+        // we'd ever wait for a healthy install, but short enough that a
+        // hung dispatch fails the stage in finite time." See
+        // [runShellViaTermux] for the cancellation semantics.
+        private const val DEFAULT_SHELL_TIMEOUT_MS = 5 * 60 * 1000L   // 5 min — git clone, venv, rm, etc.
+        private const val PIP_INSTALL_TIMEOUT_MS = 30 * 60 * 1000L   // 30 min — matches desktop installer ceiling
+        private const val DOCTOR_TIMEOUT_MS = 5 * 60 * 1000L          // 5 min — doctor is fast in practice
+        private const val VERSION_TIMEOUT_MS = 30 * 1000L              // 30 s — importlib.metadata is near-instant
     }
 }
