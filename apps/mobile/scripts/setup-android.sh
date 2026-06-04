@@ -5,6 +5,8 @@
 # android` (or as part of `pnpm run setup`).
 
 set -euo pipefail
+# DEBUG: print every command as bash runs it
+set -x
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RUNNER="$ROOT/android-runner/app/src/main"
