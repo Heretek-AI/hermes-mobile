@@ -32,7 +32,6 @@ done
 #    already in the destination.
 DEST_STRINGS="$ANDROID/app/src/main/res/values/strings.xml"
 mkdir -p "$ANDROID/app/src/main/res/values"
-if [[ -f "$RUNNER_MANIFEST" ]]; then :; fi  # (no-op — keep helper for below)
 if [[ -f "$DEST_STRINGS" && -f "$RUNNER/res/values/strings.xml" ]]; then
   while IFS= read -r line; do
     name=$(echo "$line" | grep -oE 'name="[^"]+"' | head -1 | sed 's/name="//;s/"$//')
