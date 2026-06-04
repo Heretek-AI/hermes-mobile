@@ -44,10 +44,15 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action ?: return
-        if (action != Intent.ACTION_BOOT_COMPLETED &&
-            action != "android.intent.action.QUICKBOOT_POWERON" &&
-            action != "com.htc.intent.action.QUICKBOOT_POWERON"
+        // Local name `intentAction` (not `action`) so the apply { }
+        // block below can set `action` on the NEW Intent without
+        // Kotlin's local-scope resolution mistaking it for a
+        // reassignment of this local val. Without the rename, the
+        // build fails at line 62 with 'Val cannot be reassigned'.
+        val intentAction = intent.action ?: return
+        if (intentAction != Intent.ACTION_BOOT_COMPLETED &&
+            intentAction != "android.intent.action.QUICKBOOT_POWERON" &&
+            intentAction != "com.htc.intent.action.QUICKBOOT_POWERON"
         ) {
             return
         }
