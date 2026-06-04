@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hermes Agent</string>
+    <string name="title_activity_main">Hermes Agent</string>
+    <string name="package_name">com.nousresearch.hermes</string>
+    <string name="custom_url_scheme">com.nousresearch.hermes</string>
+        <string name="gateway_notif_title">Hermes Agent</string>
+        <string name="gateway_notif_text">Gateway running on localhost:8642</string>
+        <string name="gateway_notif_action_stop">Stop</string>
+        <string name="gateway_notif_action_open">Open Hermes</string>
+        <string name="termux_missing_title">Termux Required</string>
+        <string name="termux_missing_message">To run hermes-agent locally on Android, install Termux and Termux:API from F-Droid. Then return to Hermes to continue.</string>
+        <string name="termux_install_action">Open F-Droid</string>
+        <string name="hermes_agent_pinned_sha">e7bc6189cf185f9c223a4428115147e483d9ff89</string>
+</resources>

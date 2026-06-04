@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Phase 5: Capacitor's plugin-provided colors are gone.
+         We define our own primary palette inline. The Compose
+         tree uses its own colors (see HermesAppTheme in
+         ui/theme/Theme.kt) — these XML colors are only for
+         the splash screen and any pre-Compose view. -->
+    <color name="colorPrimary">#3D55CC</color>
+    <color name="colorPrimaryDark">#1A2B6D</color>
+    <color name="colorAccent">#B8C5FF</color>
+
+    <!-- Base application theme. Phase 5: the parent is the
+         AndroidX splash screen theme (which is on the
+         classpath via androidx.core:core-splashscreen, a
+         transitive of androidx.core). Pre-Compose the
+         activity briefly shows the splash drawable before
+         setContent { } takes over. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+    </style>
+
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
+        <item name="android:background">@drawable/splash</item>
+    </style>
+</resources>

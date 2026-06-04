@@ -1,0 +1,7 @@
+// Phase 5: Capacitor is gone. The 14 autolinked plugin
+// projects and the cordova shim are no longer included.
+// The native Compose UI is the only client of the Kotlin
+// HermesApi surface; no WebView, no JS bridge, no React
+// bundle. See CLAUDE.md for the new architecture.
+
+include ':app'
