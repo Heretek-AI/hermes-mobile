@@ -28,22 +28,18 @@ import com.nousresearch.hermes.HermesApi
 /**
  * WelcomeScreen — the first interactive onboarding screen.
  *
- * Three CTAs, matching the desktop's Welcome screen:
- * 1. **Connect to remote gateway** — set remote URL + API key in
- *    the HermesApi connection config; no local install needed.
- * 2. **Install locally (Termux)** — install via Termux's `pkg`
- *    and `pip` (if Termux is installed).
- * 3. **Install locally (bundled Python)** — install using the
- *    bundled Python asset shipped with the APK.
+ * Phase 8 v1: the primary path is "just configure the API key and
+ * go". The Hermes gateway bypass means the install flow is
+ * optional — a user with a MiniMax/OpenAI/Anthropic API key can
+ * skip straight to Setup and start chatting.
  *
- * Phase 2 v1: tapping any of the buttons dispatches to the
- * InstallScreen with the chosen path. The actual install logic
- * lives in [HermesInstaller].
+ * The local-install CTAs (Termux / bundled Python) are still
+ * present for the future Path B (full Hermes gateway on-device)
+ * but are de-emphasized.
  */
 @Composable
 fun WelcomeScreen(hermes: HermesApi) {
     val termux by remember { mutableStateOf(hermes.getTermuxStatus()) }
-    val appState by hermes.appState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -57,15 +53,15 @@ fun WelcomeScreen(hermes: HermesApi) {
             style = MaterialTheme.typography.headlineLarge,
         )
         Text(
-            text = "Choose how you'd like to run the Hermes agent:",
+            text = "Choose how you'd like to get started:",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(16.dp))
 
         InstallOptionCard(
-            title = "Connect to remote gateway",
-            subtitle = "Use a Hermes gateway already running on another host. You'll need its URL and API key.",
+            title = "Just configure the API key",
+            subtitle = "Skip the local install and connect directly to an OpenAI-compatible API (e.g. MiniMax, OpenRouter). You'll just need the model name + API key.",
             enabled = true,
             primary = true,
             onClick = {
@@ -89,8 +85,8 @@ fun WelcomeScreen(hermes: HermesApi) {
 
         InstallOptionCard(
             title = "Install locally (bundled Python)",
-            subtitle = "Use the Python runtime bundled with the Hermes APK. No Termux required.",
-            enabled = true,
+            subtitle = "Use the Python runtime bundled with the Hermes APK. No Termux required. (Coming soon — the bundled-Python path is a future Path B.)",
+            enabled = false,
             primary = false,
             onClick = {
                 hermes.setAppState(HermesApi.AppState.Installing)

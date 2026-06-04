@@ -786,7 +786,17 @@ class HermesApi(private val context: Context) {
         val assistantContent = StringBuilder()
         var finalSessionId: String? = sessionId
         try {
-            client.stream(message, profile, sessionId, history).collect { ev ->
+            // Phase 8: pass the active profile's soul.md content as
+            // the OpenAI system prompt. Falls back to a hardcoded
+            // default when the profile has no soul.md.
+            val systemPrompt = readSoul(profile = profile).content
+                .ifBlank { "You are Hermes, a thoughtful, careful AI agent. Be concise." }
+            client.stream(
+                message = message,
+                profile = profile,
+                systemPrompt = systemPrompt,
+                history = history,
+            ).collect { ev ->
                 when (ev) {
                     is SseEvent.Chunk -> {
                         assistantContent.append(ev.content)
@@ -1079,16 +1089,17 @@ class HermesApi(private val context: Context) {
         val cfg = getConnectionConfig()
         val apiKey = context.getSharedPreferences(PREFS_CONNECTION, Context.MODE_PRIVATE)
             .getString(KEY_API_KEY, "") ?: ""
-        // Local gateway: 127.0.0.1:8642. Remote: use the user's
-        // `remoteUrl` directly. The plan calls out that the
-        // remote-URL validation lives in Phase 5 — for now we
-        // trust the value the user typed.
+        // Phase 8: read the model from ~/.hermes/config.yaml so the
+        // user can switch models without rebuilding. The remoteUrl
+        // is the OpenAI-compatible base URL the user entered on
+        // the Setup screen (default: https://api.minimax.io/v1).
+        val model = getConfig()["default_model"] ?: "MiniMax-M3"
         val baseUrl = if (cfg.mode == "remote" && cfg.remoteUrl.isNotEmpty()) {
             cfg.remoteUrl.trimEnd('/')
         } else {
-            "http://127.0.0.1:8642"
+            "https://api.minimax.io/v1"
         }
-        return GatewayClient(apiKey = apiKey, baseUrl = baseUrl)
+        return GatewayClient(apiKey = apiKey, baseUrl = baseUrl, model = model)
     }
 
     /** Tear down all owned resources. Called by the plugin on

@@ -108,6 +108,12 @@ class ChatViewModel(private val hermes: HermesApi) : ViewModel() {
         _state.update { it.copy(currentInput = text) }
     }
 
+    /** Phase 8: clear the error banner. Wired to the
+     *  ChatScreen error Surface's Dismiss button. */
+    fun dismissError() {
+        _state.update { it.copy(errorMessage = null) }
+    }
+
     fun send() {
         val text = _state.value.currentInput.trim()
         if ((text.isEmpty() && _state.value.attachments.isEmpty()) || _state.value.isLoading) return

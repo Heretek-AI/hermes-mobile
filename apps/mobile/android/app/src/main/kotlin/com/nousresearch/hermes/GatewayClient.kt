@@ -1,7 +1,6 @@
 package com.nousresearch.hermes
 
 import android.util.Log
-import com.nousresearch.hermes.chat.ChatUsage
 import com.nousresearch.hermes.chat.SseEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +14,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.BufferedSource
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -23,37 +23,64 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * GatewayClient — opens an SSE connection to the user's
- * hermes-agent gateway and parses the `data:` event stream.
+ * GatewayClient — opens an SSE connection to an OpenAI-compatible
+ * Chat Completions endpoint and parses the `data:` event stream.
  *
- * The desktop's gateway exposes `/v1/chat` as an
- * `text/event-stream` endpoint that emits one JSON object per
- * `data:` line. The desktop's `src/main/chat-client.ts` reads
- * the stream and surfaces `onChunk` / `onReasoning` / `onUsage` /
- * `onDone` / `onError` events to the React renderer. Phase A's
- * [HermesApi] does the same shape: it owns 6 SharedFlows, and
- * the [GatewayClient.stream] function emits the parsed events
- * as a [Flow] of [SseEvent] for the API to project.
+ * ## Phase 8: Direct OpenAI Chat Completions
+ *
+ * The Android app talks directly to an OpenAI-compatible API
+ * (default: `https://api.minimax.io/v1`, model `MiniMax-M3`).
+ * This bypasses the Hermes Python gateway; chat goes straight
+ * from `HermesApi.sendMessage` to the upstream provider.
+ *
+ * Wire format (POST `/v1/chat/completions`):
+ * ```json
+ * { "model": "...", "stream": true, "messages": [
+ *   { "role": "system", "content": "..." },
+ *   { "role": "user",   "content": "..." }
+ * ]}
+ * ```
+ *
+ * SSE response (one JSON object per `data:` line, terminated by
+ * `data: [DONE]`):
+ * ```
+ * data: {"id":"…","choices":[{"index":0,"delta":{"content":"Hi"}}]}
+ * data: {"id":"…","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+ * data: [DONE]
+ * ```
+ *
+ * The desktop (`review/hermes-desktop/src/main/hermes.ts:579, 700`)
+ * uses the same wire format. The Hermes Python gateway's
+ * `api_server.py` also exposes `/v1/chat/completions` as the
+ * canonical chat endpoint.
  *
  * ## Why okhttp
  *
  * `androidx.lifecycle:lifecycle-service:2.8.7` pulls in
- * `okhttp3:4.12.0` transitively (for the WorkManager
- * `ListenableWorker` API). The chat client reuses that — no
- * extra dep, no plugin.
+ * `okhttp3:4.12.0` transitively. The chat client reuses that —
+ * no extra dep, no plugin.
+ *
+ * SECURITY: do not add an HttpLoggingInterceptor that logs
+ * headers — the bearer token would land in logcat.
  *
  * ## abortChat
  *
  * The okhttp `Call` is cancellable. [abortChat] calls
  * `call.cancel()` from any thread, which trips the
  * `IOException("Canceled")` in the SSE reader and unwinds the
- * coroutine. The GatewaySupervisor's gateway process is left
- * alone — `abortChat` only stops the HTTP request; the user
- * gateway is killed via `stopGateway`.
+ * coroutine.
+ *
+ * // legacy: the Phase A-7 protocol spoke a custom Hermes shape
+ * (`{type: chunk|reasoning|tool_progress|usage|done|error,…}`)
+ * at `/v1/chat`. The Compose UI consumes `SseEvent.Chunk` /
+ * `SseEvent.Done` / `SseEvent.Error` / `SseEvent.Other`; the
+ * mapping below preserves those variants so the rest of the app
+ * is unchanged.
  */
 class GatewayClient(
     private val apiKey: String,
-    private val baseUrl: String = "http://127.0.0.1:8642",
+    private val baseUrl: String = "https://api.minimax.io/v1",
+    private val model: String = "MiniMax-M3",
 ) {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -67,39 +94,39 @@ class GatewayClient(
 
     /**
      * Open the SSE stream and emit parsed events as a [Flow].
-     * Cold flow — the HTTP request is only issued on the first
-     * collect, and cancellation propagates to the okhttp `Call`.
-     *
-     * Caller is expected to:
-     * 1. `takeWhile { it !is SseEvent.Done && it !is SseEvent.Error }`
-     *    to bound the stream, OR
-     * 2. call [abortChat] from a separate coroutine to break out.
      */
     fun stream(
         message: String,
         profile: String = "default",
-        resumeSessionId: String? = null,
+        systemPrompt: String? = null,
         history: List<Pair<String, String>> = emptyList(),
     ): Flow<SseEvent> = callbackFlow<SseEvent> {
+        val messages = JSONArray()
+        if (!systemPrompt.isNullOrBlank()) {
+            messages.put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+        }
+        history.forEach { (role, content) ->
+            messages.put(JSONObject().apply {
+                put("role", role)
+                put("content", content)
+            })
+        }
+        messages.put(JSONObject().apply {
+            put("role", "user")
+            put("content", message)
+        })
+
         val payload = JSONObject().apply {
-            put("message", message)
-            put("profile", profile)
-            if (resumeSessionId != null) put("resume_session_id", resumeSessionId)
-            put(
-                "history",
-                org.json.JSONArray().apply {
-                    history.forEach { (role, content) ->
-                        val obj = JSONObject()
-                        obj.put("role", role)
-                        obj.put("content", content)
-                        put(obj)
-                    }
-                },
-            )
+            put("model", model)
+            put("stream", true)
+            put("messages", messages)
         }.toString()
 
         val request = Request.Builder()
-            .url("$baseUrl/v1/chat")
+            .url("$baseUrl/chat/completions")
             .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Accept", "text/event-stream")
             .addHeader("Cache-Control", "no-cache")
@@ -108,16 +135,11 @@ class GatewayClient(
 
         val call = client.newCall(request)
         activeCall = call
-        // The plugin's HermesApi owns the lifetime; if the
-        // collector's coroutine is cancelled, cancel the call.
         invokeOnClose { call.cancel() }
 
         call.enqueue(object : Callback {
             override fun onFailure(c: Call, e: IOException) {
                 if (call.isCanceled()) {
-                    // AbortChat: don't surface the synthetic
-                    // "Canceled" IOException as a user-visible
-                    // chat error. Just close the flow.
                     close()
                 } else {
                     trySend(SseEvent.Error("network error: ${e.message}"))
@@ -130,7 +152,7 @@ class GatewayClient(
                     if (!r.isSuccessful) {
                         trySend(
                             SseEvent.Error(
-                                "gateway returned HTTP ${r.code}: " +
+                                "HTTP ${r.code}: " +
                                     (r.body?.string()?.take(200) ?: ""),
                             ),
                         )
@@ -152,10 +174,6 @@ class GatewayClient(
         })
     }.flowOn(Dispatchers.IO)
 
-    /**
-     * Cancel the in-flight chat request. Safe to call from any
-     * thread; idempotent.
-     */
     fun abortChat() {
         val c = activeCall ?: return
         c.cancel()
@@ -163,11 +181,7 @@ class GatewayClient(
     }
 
     /**
-     * Non-streaming HTTP request helper for the Phase 1.2
-     * gateway-backed methods (transcribe, api-server-key,
-     * backup/import/dump, discover provider models, cron trigger,
-     * etc.). Returns the response body as a plain String, or
-     * throws on network failure / non-2xx HTTP status.
+     * Non-streaming HTTP request helper.
      */
     suspend fun request(
         method: String,
@@ -209,10 +223,6 @@ class GatewayClient(
         })
     }
 
-    /**
-     * Same as [request] but parses the response as a JSON object.
-     * Returns an empty JSONObject on parse failure.
-     */
     suspend fun requestJson(
         method: String,
         path: String,
@@ -223,12 +233,6 @@ class GatewayClient(
     }
 
     private fun parseSseStream(source: BufferedSource, onEvent: (SseEvent) -> Unit) {
-        // SSE wire format: blank-line-delimited records. Each
-        // record is a sequence of `field: value` lines followed
-        // by a blank line. We care about the `data:` field (the
-        // gateway only emits `data:` and `event:` lines, and the
-        // event type is in the JSON payload, not the SSE event
-        // field).
         var dataBuffer: StringBuilder? = null
         while (!source.exhausted()) {
             val line = source.readUtf8Line() ?: break
@@ -244,7 +248,6 @@ class GatewayClient(
                     if (dataBuffer == null) dataBuffer = StringBuilder()
                     dataBuffer!!.append(payload)
                 }
-                // ignore other fields (id:, event:, retry:, comments)
             }
         }
     }
@@ -255,25 +258,27 @@ class GatewayClient(
         } catch (e: Exception) {
             return SseEvent.Other(type = "unparseable", raw = data.take(200))
         }
-        return when (val type = obj.optString("type")) {
-            "chunk" -> SseEvent.Chunk(content = obj.optString("content"))
-            "reasoning" -> SseEvent.Reasoning(text = obj.optString("text"))
-            "tool_progress" -> SseEvent.ToolProgress(tool = obj.optString("tool"))
-            "usage" -> SseEvent.Usage(
-                usage = ChatUsage(
-                    promptTokens = obj.optInt("promptTokens"),
-                    completionTokens = obj.optInt("completionTokens"),
-                    totalTokens = obj.optInt("totalTokens"),
-                    cost = obj.opt("cost")?.let { (it as? Number)?.toDouble() },
-                    rateLimitRemaining = obj.opt("rateLimitRemaining")?.let { (it as? Number)?.toInt() },
-                    rateLimitReset = obj.opt("rateLimitReset")?.let { (it as? Number)?.toLong() },
-                    cacheReadTokens = obj.opt("cacheReadTokens")?.let { (it as? Number)?.toInt() },
-                    cacheWriteTokens = obj.opt("cacheWriteTokens")?.let { (it as? Number)?.toInt() },
-                ),
-            )
-            "done" -> SseEvent.Done(sessionId = obj.optString("sessionId").takeIf { it.isNotEmpty() })
-            "error" -> SseEvent.Error(message = obj.optString("message"))
-            else -> SseEvent.Other(type = type, raw = data.take(200))
+        // OpenAI error frame
+        obj.optJSONObject("error")?.let { err ->
+            val msg = err.optString("message", "upstream error")
+            return SseEvent.Error(message = msg)
+        }
+        // OpenAI choice chunk
+        val choices = obj.optJSONArray("choices")
+            ?: return SseEvent.Other(type = "no-choices", raw = data.take(200))
+        if (choices.length() == 0) {
+            return SseEvent.Other(type = "empty-choices", raw = data.take(200))
+        }
+        val first = choices.optJSONObject(0)
+            ?: return SseEvent.Other(type = "no-first-choice", raw = data.take(200))
+        val delta = first.optJSONObject("delta")
+        val content = delta?.optString("content").orEmpty()
+        val finishReason = first.optString("finish_reason", "")
+        return when {
+            content.isNotEmpty() -> SseEvent.Chunk(content = content)
+            finishReason == "stop" || finishReason == "length" || finishReason == "tool_calls" ->
+                SseEvent.Done(sessionId = obj.optString("id").takeIf { it.isNotEmpty() })
+            else -> SseEvent.Other(type = "empty-delta", raw = data.take(200))
         }
     }
 
