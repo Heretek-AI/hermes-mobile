@@ -5,8 +5,6 @@
 # android` (or as part of `pnpm run setup`).
 
 set -euo pipefail
-# DEBUG: print every command as bash runs it
-set -x
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RUNNER="$ROOT/android-runner/app/src/main"
@@ -34,13 +32,20 @@ cp -f "$RUNNER/res/values/strings.xml" "$ANDROID/app/src/main/res/values/strings
 MANIFEST="$ANDROID/app/src/main/AndroidManifest.xml"
 RUNNER_MANIFEST="$RUNNER/AndroidManifest.xml"
 if [[ -f "$MANIFEST" && -f "$RUNNER_MANIFEST" ]]; then
+  # Match <uses-permission ... android:name="..."/> lines. The trailing
+  # 'android:name=' anchor is critical: the runner manifest's header
+  # comment mentions '<uses-permission>' by name, and a naive
+  # '<uses-permission' grep would pick up that comment line too. The
+  # inner grep -oE would then return no match, exit 1, and with
+  # 'set -o pipefail' the whole assignment fails under 'set -e' —
+  # the script was bailing on the FIRST line of this loop.
   while IFS= read -r line; do
-    perm=$(echo "$line" | grep -oE 'android:name="[^"]+"' | head -1 | sed 's/android:name="//;s/"$//')
+    perm=$(echo "$line" | grep -oE 'android:name="[^"]+"' | head -1 | sed 's/android:name="//;s/"$//' || true)
     if [[ -n "$perm" ]] && ! grep -q "$perm" "$MANIFEST"; then
       # Insert before the closing </manifest> tag.
       sed -i "s|</manifest>|    $line\n</manifest>|" "$MANIFEST"
     fi
-  done < <(grep '<uses-permission' "$RUNNER_MANIFEST")
+  done < <(grep -E '<uses-permission[^/]*android:name=' "$RUNNER_MANIFEST")
 fi
 
 # 4. Register HermesAPIPlugin in MainActivity. The generated file
