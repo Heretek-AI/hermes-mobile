@@ -171,7 +171,8 @@ jobs:
         # Injects the HermesAPIPlugin Kotlin sources from android-runner/
         # into the generated android/ project. Real failures must surface
         # (no || true — earlier this masked missing-android-dir errors).
-        run: bash apps/mobile/scripts/setup-android.sh
+        # DEBUG: -x to surface the failing line.
+        run: bash -x apps/mobile/scripts/setup-android.sh 2>&1 | tail -40
 
       - name: Copy build.gradle template
         # The Phase 6 build.gradle.template layers ABI splits +
