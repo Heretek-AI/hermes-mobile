@@ -60,7 +60,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # Capacitor 8 + AGP 8.7+ target Java 21 source. The 9th
+          # smoke run (#26928591201) failed at
+          # ':capacitor-android:compileReleaseJavaWithJavac' with
+          # 'invalid source release: 21' because the workflow
+          # installed JDK 17. F-Droid metadata still says 'gradle:
+          # 8.7' which is AGP 8.5–8.7 (Java 17 target), but
+          # @capacitor/android 8.4.0 requires Java 21.
+          java-version: '21'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
