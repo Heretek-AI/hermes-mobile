@@ -155,18 +155,43 @@ jobs:
           mkdir -p keystore
           touch keystore/keystore.properties
 
+      - name: Scaffold Capacitor android platform
+        # The apps/mobile/android/ dir is gitignored — each maintainer
+        # runs `npx cap add android` locally to generate it. CI has no
+        # such checkout, so the workflow scaffolds it. The hashFiles
+        # guard makes this idempotent: if build.gradle already exists
+        # (e.g. from a previous CI run cached on the runner, or in a
+        # future world where it gets checked in), skip the add.
+        if: !hashFiles('apps/mobile/android/app/build.gradle')
+        working-directory: apps/mobile
+        run: pnpm exec cap add android
+
       - name: Copy HermesAPIPlugin into generated android project
-        run: bash apps/mobile/scripts/setup-android.sh || true
+        # Injects the HermesAPIPlugin Kotlin sources from android-runner/
+        # into the generated android/ project. Real failures must surface
+        # (no || true — earlier this masked missing-android-dir errors).
+        run: bash apps/mobile/scripts/setup-android.sh
 
       - name: Copy build.gradle template
-        if: hashFiles('apps/mobile/android/app/build.gradle') != ''
+        # The Phase 6 build.gradle.template layers ABI splits +
+        # signingConfigs.release on top of the default scaffold that
+        # `cap add android` produces. Always overwrite — the cap
+        # default doesn't have these. The inner `if` guards the
+        # missing-template edge case (would never happen on this repo).
         run: |
           if [[ -f android-runner/app/build.gradle.template ]]; then
             cp android-runner/app/build.gradle.template apps/mobile/android/app/build.gradle
           fi
 
       - name: Run cap sync
-        run: pnpm --filter @hermes-mobile/app cap sync android
+        # Copies the Vite-built web assets + plugins into the
+        # generated android/ project. The script is named 'cap:sync'
+        # (with a colon) in apps/mobile/package.json — pnpm uses
+        # the colon to distinguish scripts from positional args, so
+        # the previous `cap sync android` invocation (no colon)
+        # failed with "None of the selected packages has a 'cap'
+        # script".
+        run: pnpm --filter @hermes-mobile/app cap:sync
 
       - name: Gradle assembleRelease
         working-directory: apps/mobile/android
