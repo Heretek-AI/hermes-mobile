@@ -15,7 +15,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,6 +118,28 @@ class HermesApi(private val context: Context) {
         replay = 0, extraBufferCapacity = 16,
     )
     val chatError: SharedFlow<String> = _chatError
+
+    // ------------------------------------------------------------------
+    // Phase 2: top-level app state. The onboarding flow (Splash →
+    // Welcome → Install → Setup → Main) is a single state machine
+    // owned by HermesApi. MainActivity reads [appState] and switches
+    // the top-level `setContent` accordingly.
+    // ------------------------------------------------------------------
+
+    enum class AppState {
+        Splash,    // cold-start probe (install check + version fetch)
+        Welcome,   // 3 CTAs: remote / Termux / bundled
+        Installing, // 8-stage install in progress
+        Setup,     // first-launch config: provider + model + profile
+        Main,      // 5-tab bottom nav
+    }
+
+    private val _appState = MutableStateFlow(AppState.Splash)
+    val appState: StateFlow<AppState> = _appState.asStateFlow()
+
+    fun setAppState(state: AppState) {
+        _appState.value = state
+    }
 
     // ------------------------------------------------------------------
     // Event streams re-emitted by HermesAPIPlugin as Capacitor listeners.
@@ -1075,6 +1100,44 @@ class HermesApi(private val context: Context) {
         supervisor.dispose()
         sshTunnel.stop()
         gatewayClient?.abortChat()
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 2: top-level init. Called from HermesApp.onCreate AFTER
+    // the HermesApi singleton is constructed. Inspects the install
+    // state and routes the user to the right onboarding screen.
+    // ------------------------------------------------------------------
+
+    /**
+     * Inspect the install + config state and set [appState] to the
+     * appropriate first screen. Called from [HermesApp.onCreate]
+     * after the singleton is built. The Splash screen calls this
+     * after its brief brand-mark display; the onboarding screens
+     * can also call it again after a stage completes.
+     *
+     * Routing rules (matches the desktop's `App.tsx:33-72` state
+     * machine):
+     * - install not verified → Welcome (or Installing if a stage is
+     *   mid-flight)
+     * - install verified but no profile → Setup
+     * - install verified + profile exists → Main
+     */
+    fun init() {
+        val verified = installer.checkInstall().verified
+        if (!verified) {
+            // No install yet; let the user pick a path.
+            _appState.value = AppState.Welcome
+            return
+        }
+        val profile = activeProfile()
+        val profileDir = File(hermesHome(), "profiles/$profile")
+        if (!profileDir.exists()) {
+            // Install is verified but the profile dir is missing;
+            // the user needs to set up before first chat.
+            _appState.value = AppState.Setup
+            return
+        }
+        _appState.value = AppState.Main
     }
 
     // ------------------------------------------------------------------
