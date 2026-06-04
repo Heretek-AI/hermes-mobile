@@ -3,6 +3,7 @@ package com.nousresearch.hermes
 import android.util.Log
 import com.nousresearch.hermes.chat.SseEvent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
@@ -135,7 +136,6 @@ class GatewayClient(
 
         val call = client.newCall(request)
         activeCall = call
-        invokeOnClose { call.cancel() }
 
         call.enqueue(object : Callback {
             override fun onFailure(c: Call, e: IOException) {
@@ -172,6 +172,14 @@ class GatewayClient(
                 }
             }
         })
+
+        // Suspend until the flow is closed. The block runs when
+        // the collector cancels OR when we call close() above; in
+        // both cases we cancel the okhttp call so no callback
+        // / listener leaks. This is the idiomatic callbackFlow
+        // shape; using invokeOnClose is not equivalent because
+        // it can't throw or be suspended.
+        awaitClose { call.cancel() }
     }.flowOn(Dispatchers.IO)
 
     fun abortChat() {
