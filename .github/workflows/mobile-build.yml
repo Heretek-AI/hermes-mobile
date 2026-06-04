@@ -99,31 +99,10 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Install workspace dependencies
+        # v0.1.0: apps/mobile/package.json is a minimal stub
+        # (no Capacitor / no React / no @hermes/renderer). The
+        # pnpm install is fast and just syncs the workspace.
         run: pnpm install --frozen-lockfile
-
-      - name: Build renderer
-        run: pnpm --filter @hermes/renderer typecheck
-
-      - name: Build IPC + renderer + mobile (Vite)
-        run: pnpm run build
-
-      - name: Clone desktop renderer at pinned SHA
-        # The desktop's React renderer is vendored at build time from
-        # fathah/hermes-desktop. The SHA is pinned in
-        # apps/mobile/scripts/hermes-desktop-version.txt so the build
-        # is reproducible. review/ is gitignored and only exists on a
-        # maintainer's local checkout, so CI must clone fresh.
-        run: |
-          set -euo pipefail
-          SHA=$(grep -v '^#' apps/mobile/scripts/hermes-desktop-version.txt | tr -d '[:space:]')
-          if [[ -z "$SHA" ]]; then
-            echo "error: empty SHA in apps/mobile/scripts/hermes-desktop-version.txt" >&2
-            exit 1
-          fi
-          echo "Cloning fathah/hermes-desktop @ $SHA"
-          git clone --filter=blob:none --no-checkout \
-            https://github.com/fathah/hermes-desktop.git /tmp/hermes-desktop
-          git -C /tmp/hermes-desktop checkout "$SHA"
 
       - name: Sync android-runner to apps/mobile/android
         # Per groovy-fluttering-island.md Phase 0c: android-runner/ is
@@ -132,6 +111,13 @@ jobs:
         # (including HermesApi.kt, MainActivity.kt, the Compose UI, and
         # the chat/db/memory packages) into apps/mobile/android/. The
         # WebView+Capacitor+vendored-renderer era is over.
+        # v0.1.0: this step also copies android-runner/app/build.gradle.template
+        # onto apps/mobile/android/app/build.gradle. The template
+        # carries the Phase 0-7+8 wiring (buildscript, KSP, Room,
+        # OkHttp, Markwon, BuildConfig.SENTRY_DSN, ABI splits,
+        # signingConfigs.release, Sentry dep). v0.1.0 also syncs
+        # the template to the live build.gradle (see commit fc60d5b
+        # which resolved a long-standing template-drift bug).
         run: bash apps/mobile/scripts/setup-android.sh
 
       - name: Verify Kotlin drift guard
@@ -165,49 +151,6 @@ jobs:
           # the unsigned APK is what F-Droid rebuilds from.
           mkdir -p keystore
           touch keystore/keystore.properties
-
-      - name: Scaffold Capacitor android platform
-        # The apps/mobile/android/ dir is gitignored — each maintainer
-        # runs `npx cap add android` locally to generate it. CI has no
-        # such checkout, so the workflow scaffolds it. The hashFiles
-        # guard makes this idempotent: skip when build.gradle already
-        # exists (a previous CI run cached on the runner, or a future
-        # world where it gets checked in). Note: GitHub Actions has
-        # no `!` prefix for if:, so we test for the empty case.
-        if: hashFiles('apps/mobile/android/app/build.gradle') == ''
-        working-directory: apps/mobile
-        run: pnpm exec cap add android
-
-      - name: Copy HermesAPIPlugin into generated android project
-        # Injects the HermesAPIPlugin Kotlin sources from android-runner/
-        # into the generated android/ project. Real failures must surface
-        # (no || true — earlier this masked missing-android-dir errors).
-        run: bash apps/mobile/scripts/setup-android.sh
-
-      - name: Run cap sync
-        # Copies the Vite-built web assets + plugins into the
-        # generated android/ project. The script is named 'cap:sync'
-        # (with a colon) in apps/mobile/package.json — pnpm uses
-        # the colon to distinguish scripts from positional args, so
-        # the previous `cap sync android` invocation (no colon)
-        # failed with "None of the selected packages has a 'cap'
-        # script". Must run BEFORE the build.gradle template copy —
-        # cap sync can regenerate build.gradle from its own
-        # template, so we have to be the last word.
-        run: pnpm --filter @hermes-mobile/app cap:sync
-
-      - name: Copy build.gradle template
-        # The Phase 6 build.gradle.template layers ABI splits +
-        # signingConfigs.release on top of the default scaffold that
-        # `cap add android` produces, and survives `cap sync`. This
-        # step must run AFTER cap sync — the 6th smoke run failed
-        # at Gradle with 'compileSdk not specified' because cap
-        # sync was re-creating build.gradle from its own scaffold
-        # template and overwriting our copy.
-        run: |
-          if [[ -f android-runner/app/build.gradle.template ]]; then
-            cp android-runner/app/build.gradle.template apps/mobile/android/app/build.gradle
-          fi
 
       - name: Gradle assembleRelease
         working-directory: apps/mobile/android
