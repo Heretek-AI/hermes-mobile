@@ -21,6 +21,18 @@ export function MobileShell({ children, hideChrome, onTabChange }: MobileShellPr
     } catch {
       // browser dev mode — no haptics
     }
+    // Phase 5: dispatch a CustomEvent that the vendored Layout
+    // component listens for (see the patch in
+    // apps/mobile/scripts/renderer-patches/screens/Layout/Layout.tsx).
+    // The Layout validates the view name against its NAV_ITEMS
+    // whitelist and calls its internal goTo(view) which switches
+    // the visible pane. We also notify the local onTabChange
+    // callback for any non-renderer side effects (analytics etc).
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("hermes:mobile-go-to-view", { detail: tab }),
+      );
+    }
     onTabChange?.(tab);
   };
 
