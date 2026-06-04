@@ -11,8 +11,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-SRC="$ROOT/review/hermes-desktop/src/renderer/src"
-SHARED_SRC="$ROOT/review/hermes-desktop/src/shared"
+# Source paths default to the local `review/hermes-desktop/` checkout
+# (used by maintainers doing local vendor work). The CI workflow clones
+# the desktop repo at a pinned SHA and sets HERMES_DESKTOP_SRC +
+# HERMES_DESKTOP_SHARED_SRC to point at that clone — that path is
+# preferred when set.
+SRC="${HERMES_DESKTOP_SRC:-$ROOT/review/hermes-desktop/src/renderer/src}"
+SHARED_SRC="${HERMES_DESKTOP_SHARED_SRC:-$ROOT/review/hermes-desktop/src/shared}"
 DST="$ROOT/packages/renderer/src"
 # Place vendored shared/ one level above the renderer so the desktop's
 # `../../../../shared/foo` relative paths resolve. The desktop's
@@ -24,7 +29,12 @@ SHARED_DST="$ROOT/packages/shared"
 SHIMS_SRC="$ROOT/apps/mobile/scripts/renderer-shims"
 
 if [[ ! -d "$SRC" ]]; then
-  echo "error: $SRC not found. Make sure review/hermes-desktop/ is checked out." >&2
+  echo "error: $SRC not found." >&2
+  echo "  Local devs: check out fathah/hermes-desktop at the SHA in" >&2
+  echo "    apps/mobile/scripts/hermes-desktop-version.txt into" >&2
+  echo "    review/hermes-desktop/." >&2
+  echo "  CI: set HERMES_DESKTOP_SRC (and HERMES_DESKTOP_SHARED_SRC) to" >&2
+  echo "    a clone of fathah/hermes-desktop." >&2
   exit 1
 fi
 

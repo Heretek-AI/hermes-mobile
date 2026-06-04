@@ -26,6 +26,14 @@ on:
 permissions:
   contents: write  # for softprops/action-gh-release
 
+# Opt into the GitHub-hosted Node.js 24 runtime before the June 16, 2026
+# forced upgrade. The actions we use (actions/checkout@v4,
+# actions/setup-node@v4, actions/setup-java@v4, pnpm/action-setup@v4,
+# actions/cache@v4, android-actions/setup-android@v3) are all currently
+# on Node 20; setting this env var moves them to Node 24 across the job.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -57,9 +65,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: 35
-          build-tools-version: '35.0.0'
-          ndk-version: 'r26b'
+          # android-actions/setup-android@v3 takes a single `packages`
+          # string of sdkmanager-style coordinates, not the v2
+          # api-level/build-tools-version/ndk-version triplet.
+          packages: 'platforms;android-35 build-tools;35.0.0 ndk;r26b'
 
       - name: Cache pnpm
         uses: actions/cache@v4
@@ -88,7 +97,30 @@ jobs:
       - name: Build IPC + renderer + mobile (Vite)
         run: pnpm run build
 
+      - name: Clone desktop renderer at pinned SHA
+        # The desktop's React renderer is vendored at build time from
+        # fathah/hermes-desktop. The SHA is pinned in
+        # apps/mobile/scripts/hermes-desktop-version.txt so the build
+        # is reproducible. review/ is gitignored and only exists on a
+        # maintainer's local checkout, so CI must clone fresh.
+        run: |
+          set -euo pipefail
+          SHA=$(grep -v '^#' apps/mobile/scripts/hermes-desktop-version.txt | tr -d '[:space:]')
+          if [[ -z "$SHA" ]]; then
+            echo "error: empty SHA in apps/mobile/scripts/hermes-desktop-version.txt" >&2
+            exit 1
+          fi
+          echo "Cloning fathah/hermes-desktop @ $SHA"
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/fathah/hermes-desktop.git /tmp/hermes-desktop
+          git -C /tmp/hermes-desktop checkout "$SHA"
+
       - name: Vendor desktop renderer
+        env:
+          # Point the vendor script at the clone we just made; falls
+          # back to review/hermes-desktop/ for local devs (no env var).
+          HERMES_DESKTOP_SRC: /tmp/hermes-desktop/src/renderer/src
+          HERMES_DESKTOP_SHARED_SRC: /tmp/hermes-desktop/src/shared
         run: bash apps/mobile/scripts/vendor-renderer.sh
 
       - name: Decode keystore from base64 secret
