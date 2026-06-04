@@ -40,14 +40,19 @@ Store the following in the repo's encrypted secrets:
 
 | Secret | Value |
 |---|---|
-| `KEYSTORE_FILE` | base64 of `keystore/release.jks` |
+| `KEYSTORE_FILE_B64` | base64 of `keystore/release.jks` (decoded to `/tmp/release.jks` in CI) |
 | `KEYSTORE_PASSWORD` | the keystore password |
-| `KEY_ALIAS` | `hermes` (the alias used at keytool) |
 | `KEY_PASSWORD` | the key password (often the same as keystore) |
 
-The `mobile-build.yml` workflow decodes `KEYSTORE_FILE` to a temp
+The key alias `hermes` is hardcoded in the workflow (and in
+`build.gradle`'s `signingConfig`), so it is not a secret.
+
+The `mobile-build.yml` workflow decodes `KEYSTORE_FILE_B64` to a temp
 file, exports the passwords as env vars, and `./gradlew assembleRelease`
-picks them up via `signingConfigs.release.storeFile` etc.
+picks them up via `signingConfigs.release.storeFile` etc. Note that
+the CI path differs from the local path below — CI writes
+`storeFile=/tmp/release.jks` to `keystore/keystore.properties`; local
+dev uses `../../../keystore/release.jks`.
 
 ## Rotation policy
 

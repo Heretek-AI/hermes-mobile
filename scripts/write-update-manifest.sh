@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APK_DIR="$ROOT/apps/mobile/android/app/build/outputs/apk/release"
 VERSION_NAME="${GITHUB_REF_NAME#mobile-v}"  # strip 'mobile-v' prefix
-RELEASE_URL_BASE="https://github.com/NousResearch/hermes-mobile/releases/download/${GITHUB_REF_NAME:-mobile-v0.0.0}"
+RELEASE_URL_BASE="https://github.com/Heretek-AI/hermes-mobile/releases/download/${GITHUB_REF_NAME:-mobile-v0.0.0}"
 
 # Find the versionCode by parsing the gradle build output. We
 # could also read it from the build.gradle, but this is robust
@@ -32,7 +32,7 @@ echo "{" > "$OUT"
 echo "  \"versionName\": \"$VERSION_NAME\"," >> "$OUT"
 echo "  \"versionCode\": $VERSION_CODE," >> "$OUT"
 echo "  \"url\": \"$RELEASE_URL_BASE/hermes-mobile-$VERSION_NAME-universal.apk\"," >> "$OUT"
-echo "  \"releaseNotes\": \"https://github.com/NousResearch/hermes-mobile/releases/tag/${GITHUB_REF_NAME:-mobile-v0.0.0}\"," >> "$OUT"
+echo "  \"releaseNotes\": \"https://github.com/Heretek-AI/hermes-mobile/releases/tag/${GITHUB_REF_NAME:-mobile-v0.0.0}\"," >> "$OUT"
 echo "  \"assets\": {" >> "$OUT"
 
 FIRST=true
