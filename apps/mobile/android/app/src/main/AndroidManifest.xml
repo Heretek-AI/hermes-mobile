@@ -85,12 +85,13 @@
                 android:value="Hosts the Hermes agent gateway subprocess; long-running; user-initiated" />
         </service>
 
-        <!-- Phase A: SshTunnelService wraps a `ssh -N -L ...` Process.
-             It's a regular Service (not foreground) — its lifetime
-             is tied to the host activity, not to user-visible state. -->
-        <service
-            android:name=".SshTunnelService"
-            android:exported="false" />
+        <!-- v0.1.0: SshTunnelService is a plain helper class
+             (instantiated by HermesApi as `SshTunnelService(context)`),
+             not a real android.app.Service. The previous manifest
+             entry was a Phase A leftover that the AGP instantiability
+             check rejected. The class is still used as a helper for
+             managing the SSH child process; only the manifest
+             registration is dropped. -->
 
         <!-- Phase A: OAuthBrowserActivity generates a CSRF state
              token, saves it to hermes_oauth prefs, then launches

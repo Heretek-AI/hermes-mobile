@@ -100,14 +100,14 @@
     </receiver>
 
     <!--
-      Phase A: SSH tunnel service. Wraps `ssh -N -L ...` to forward
-      a local port to a remote hermes-agent gateway. Not a foreground
-      service — its lifetime is bound to the host activity.
+      v0.1.0: SshTunnelService is a plain helper class
+      (instantiated by HermesApi as `SshTunnelService(context)`),
+      not a real android.app.Service. The previous manifest entry
+      was a Phase A leftover that AGP's instantiability check
+      rejected. The class is still used as a helper for managing
+      the SSH child process; only the manifest registration is
+      dropped. The Kotlin class itself is unchanged.
     -->
-    <service
-        android:name=".SshTunnelService"
-        android:enabled="true"
-        android:exported="false" />
 
     <!--
       Phase A: OAuth device-code browser activity. Generates a CSRF
