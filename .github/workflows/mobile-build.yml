@@ -159,10 +159,11 @@ jobs:
         # The apps/mobile/android/ dir is gitignored — each maintainer
         # runs `npx cap add android` locally to generate it. CI has no
         # such checkout, so the workflow scaffolds it. The hashFiles
-        # guard makes this idempotent: if build.gradle already exists
-        # (e.g. from a previous CI run cached on the runner, or in a
-        # future world where it gets checked in), skip the add.
-        if: !hashFiles('apps/mobile/android/app/build.gradle')
+        # guard makes this idempotent: skip when build.gradle already
+        # exists (a previous CI run cached on the runner, or a future
+        # world where it gets checked in). Note: GitHub Actions has
+        # no `!` prefix for if:, so we test for the empty case.
+        if: hashFiles('apps/mobile/android/app/build.gradle') == ''
         working-directory: apps/mobile
         run: pnpm exec cap add android
 
