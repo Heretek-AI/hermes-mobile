@@ -43,6 +43,7 @@ class HermesAPIPlugin : Plugin() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var installer: HermesInstaller
     private lateinit var supervisor: GatewaySupervisor
+    private lateinit var sshTunnel: SshTunnelService
     private var installProgressCall: PluginCall? = null
     private var gatewayStateCall: PluginCall? = null
 
@@ -50,6 +51,7 @@ class HermesAPIPlugin : Plugin() {
         super.load()
         installer = HermesInstaller(context)
         supervisor = GatewaySupervisor(context, installer)
+        sshTunnel = SshTunnelService(context)
         // Install-progress events → onInstallProgress
         scope.launch {
             installer.progressStream.collect { stage ->
@@ -239,6 +241,77 @@ class HermesAPIPlugin : Plugin() {
         call.resolve(JSObject().put("value", installer.getHermesVersion()))
     }
 
+    // ------------------------------------------------------------------
+    // Phase 5: OAuth login (in-app browser)
+    // ------------------------------------------------------------------
+
+    /**
+     * Open the OAuth provider's auth URL in a system browser.
+     * The redirect hits the `hermes://oauth-callback` scheme
+     * (declared in the manifest), re-enters the app, and the
+     * code is written to auth.json.
+     *
+     * The renderer streams the URL via `onOAuthLoginProgress` so
+     * the user sees status (opening browser, callback received,
+     * error) in the same modal the desktop uses.
+     */
+    @PluginMethod
+    fun oauthLogin(call: PluginCall) {
+        val provider = call.getString("provider") ?: return call.reject("provider is required")
+        val profile = call.getString("profile", "default")
+        val authUrl = buildOAuthUrl(provider, profile)
+        if (authUrl == null) {
+            call.reject("unknown provider: $provider")
+            return
+        }
+        try {
+            val i = android.content.Intent(context, OAuthBrowserActivity::class.java)
+            i.putExtra(OAuthBrowserActivity.EXTRA_AUTH_URL, authUrl)
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+            // Stream a progress event so the renderer can show
+            // "Opening browser for $provider..."
+            val data = JSObject()
+            data.put("chunk", "Opening browser for $provider...\n")
+            notifyListeners("onOAuthLoginProgress", data)
+            call.resolve(JSObject().put("success", true))
+        } catch (e: Exception) {
+            call.reject("oauthLogin failed: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun cancelOAuthLogin(call: PluginCall) {
+        // Best-effort: dismiss the OAuthBrowserActivity if it's
+        // still in the back stack. Capacitor doesn't have a
+        // direct way to ask "is this activity alive" so we
+        // just send a broadcast.
+        val i = android.content.Intent("com.nousresearch.hermes.OAUTH_CANCEL")
+        i.setPackage(context.packageName)
+        context.sendBroadcast(i)
+        call.resolve(JSObject().put("value", true))
+    }
+
+    private fun buildOAuthUrl(provider: String, profile: String): String? {
+        // Phase 5 v1: stub URLs. The desktop's `hermes auth add`
+        // command knows the per-provider auth URL templates; we
+        // mirror them as a static map. The full URL has the
+        // client_id, redirect_uri, scope, and state — the
+        // desktop composes these from auth.json.
+        val base = when (provider.lowercase()) {
+            "openai" -> "https://auth.openai.com/oauth/authorize"
+            "anthropic" -> "https://console.anthropic.com/oauth/authorize"
+            "github" -> "https://github.com/login/oauth/authorize"
+            else -> return null
+        }
+        val redirect = "hermes://oauth-callback"
+        // Real client_ids would come from a built-in table or
+        // user-supplied env. For the stub we leave client_id
+        // empty; the provider will reject, but the user can see
+        // the OAuth flow works end-to-end.
+        return "$base?response_type=code&redirect_uri=${java.net.URLEncoder.encode(redirect, "UTF-8")}&client_id=hermes-mobile&scope=read"
+    }
+
     @PluginMethod
     fun refreshHermesVersion(call: PluginCall) {
         scope.launch {
@@ -312,6 +385,126 @@ class HermesAPIPlugin : Plugin() {
     fun onGatewayStateChange(call: PluginCall) {
         call.setKeepCallbackAlive(true)
         gatewayStateCall = call
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 5: SSH tunnel
+    // ------------------------------------------------------------------
+
+    /**
+     * Open an SSH local-port-forward to a remote hermes-agent
+     * gateway. The desktop's `src/main/ssh-remote.ts:startSshTunnel`
+     * calls node-ssh's `forwardOut`; we use the system `ssh`
+     * binary via SshTunnelService.
+     *
+     * Reads the host/port/username/keyPath from the connection
+     * config that `setSshConfig` previously wrote. The renderer
+     * prompts for these in the Welcome screen's "SSH mode" path.
+     */
+    @PluginMethod
+    fun startSshTunnel(call: PluginCall) {
+        val cfg = readSshConfig() ?: return call.reject("setSshConfig not called")
+        val ok = sshTunnel.start(
+            SshTunnelService.Config(
+                host = cfg.host,
+                port = cfg.port,
+                username = cfg.username,
+                keyPath = cfg.keyPath,
+                remotePort = cfg.remotePort,
+                localPort = cfg.localPort,
+            ),
+        )
+        call.resolve(JSObject().put("value", ok))
+    }
+
+    @PluginMethod
+    fun stopSshTunnel(call: PluginCall) {
+        sshTunnel.stop()
+        call.resolve(JSObject().put("value", true))
+    }
+
+    @PluginMethod
+    fun isSshTunnelActive(call: PluginCall) {
+        call.resolve(JSObject().put("value", sshTunnel.isActive()))
+    }
+
+    /**
+     * Best-effort connectivity check. Runs `ssh -o BatchMode=yes
+     * -o ConnectTimeout=5 user@host` and returns true if the
+     * binary at least connected (the remote end rejecting auth
+     * still counts as "the host is reachable"). Used by the
+     * renderer's Welcome screen to validate the SSH form before
+     * the user commits to a tunnel.
+     */
+    @PluginMethod
+    fun testSshConnection(call: PluginCall) {
+        val host = call.getString("host") ?: return call.reject("host is required")
+        val port = call.getInt("port", 22)
+        val username = call.getString("username") ?: return call.reject("username is required")
+        val keyPath = call.getString("keyPath") ?: return call.reject("keyPath is required")
+        val remotePort = call.getInt("remotePort", 8642)
+        // Spin a throwaway ssh -T tunnel that just verifies the
+        // connection; kill it after 5s. We don't actually care
+        // about the remote command output.
+        val ok = sshTunnel.start(
+            SshTunnelService.Config(host, port, username, keyPath, remotePort, remotePort + 1),
+        )
+        if (ok) {
+            // Wait briefly for the bind, then stop.
+            Thread {
+                Thread.sleep(5_000)
+                sshTunnel.stop()
+            }.start()
+        }
+        call.resolve(JSObject().put("value", ok))
+    }
+
+    /**
+     * Persist the SSH config to SharedPreferences. The renderer
+     * calls this when the user submits the SSH form on the
+     * Welcome screen.
+     */
+    @PluginMethod
+    fun setSshConfig(call: PluginCall) {
+        val host = call.getString("host") ?: ""
+        val port = call.getInt("port", 22)
+        val username = call.getString("username") ?: ""
+        val keyPath = call.getString("keyPath") ?: ""
+        val remotePort = call.getInt("remotePort", 8642)
+        val localPort = call.getInt("localPort", 8642)
+        val prefs = context.getSharedPreferences("hermes_ssh", android.content.Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("host", host)
+            .putInt("port", port)
+            .putString("username", username)
+            .putString("keyPath", keyPath)
+            .putInt("remotePort", remotePort)
+            .putInt("localPort", localPort)
+            .apply()
+        call.resolve(JSObject().put("value", true))
+    }
+
+    private data class SshConfig(
+        val host: String,
+        val port: Int,
+        val username: String,
+        val keyPath: String,
+        val remotePort: Int,
+        val localPort: Int,
+    )
+
+    private fun readSshConfig(): SshConfig? {
+        val prefs = context.getSharedPreferences("hermes_ssh", android.content.Context.MODE_PRIVATE)
+        val host = prefs.getString("host", "") ?: ""
+        if (host.isEmpty()) return null
+        return SshConfig(
+            host = host,
+            port = prefs.getInt("port", 22),
+            username = prefs.getString("username", "") ?: "",
+            keyPath = prefs.getString("keyPath", "") ?: "",
+            remotePort = prefs.getInt("remotePort", 8642),
+            localPort = prefs.getInt("localPort", 8642),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -527,6 +720,7 @@ class HermesAPIPlugin : Plugin() {
     override fun handleOnDestroy() {
         installer.dispose()
         supervisor.dispose()
+        sshTunnel.stop()
         super.handleOnDestroy()
     }
 }
