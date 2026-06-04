@@ -1,0 +1,68 @@
+# Project metadata
+.claude/
+CLAUDE.md
+review/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Capacitor / Android
+apps/mobile/android/.gradle/
+apps/mobile/android/.idea/
+apps/mobile/android/local.properties
+apps/mobile/android/app/build/
+apps/mobile/android/captures/
+apps/mobile/android/app/release/
+apps/mobile/android/app/debug/
+apps/mobile/android/*.iml
+apps/mobile/android/.cxx/
+
+# iOS (not used in v1, scaffolded for future)
+apps/mobile/ios/Pods/
+apps/mobile/ios/build/
+
+# Generated renderer
+packages/renderer/dist/
+
+# Keystore and signing material
+*.jks
+*.keystore
+keystore.properties
+android-runner/app/release.keystore
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Python artifacts (vendored hermes-agent install)
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Sensitive
+.sentryclirc

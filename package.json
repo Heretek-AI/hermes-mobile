@@ -1,0 +1,29 @@
+{
+  "name": "hermes-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Android port of hermes-desktop — runs hermes-agent on-device via Capacitor + the desktop's React renderer.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "vendor:renderer": "bash apps/mobile/scripts/vendor-renderer.sh",
+    "build:ipc": "pnpm --filter @hermes/ipc build",
+    "build:renderer": "pnpm --filter @hermes/renderer build",
+    "build:mobile": "pnpm --filter @hermes-mobile/app build",
+    "build": "pnpm run build:ipc && pnpm run build:renderer && pnpm run build:mobile",
+    "dev:mobile": "pnpm --filter @hermes-mobile/app dev",
+    "cap:sync": "pnpm --filter @hermes-mobile/app cap sync android",
+    "cap:open": "pnpm --filter @hermes-mobile/app cap open android",
+    "android:assemble": "cd apps/mobile/android && ./gradlew assembleDebug",
+    "android:run": "cd apps/mobile/android && ./gradlew installDebug",
+    "typecheck": "pnpm -r run typecheck",
+    "clean": "pnpm -r exec rm -rf dist node_modules/.cache"
+  },
+  "devDependencies": {
+    "i18next": "^25.6.0",
+    "typescript": "^5.9.3"
+  }
+}
