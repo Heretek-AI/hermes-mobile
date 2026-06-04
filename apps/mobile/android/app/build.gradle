@@ -250,6 +250,18 @@ dependencies {
     implementation "io.noties.markwon:linkify:4.6.2"
     debugImplementation "androidx.compose.ui:ui-tooling"
     debugImplementation "androidx.compose.ui:ui-test-manifest"
+
+    // Phase 6: unit-test stack. JUnit 4 is what the AndroidX test
+    // runner expects; MockK + Turbine are the de-facto Kotlin
+    // mocks + flow testing libs.
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "io.mockk:mockk:1.13.10"
+    testImplementation "app.cash.turbine:turbine:1.1.0"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1"
+    testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
+    // Compose UI test for the chat / nav screens
+    androidTestImplementation "androidx.compose.ui:ui-test-junit4"
+    debugImplementation "androidx.compose.ui:ui-test-manifest"
 }
 
 // Pull in the autolinked Capacitor plugins. cap sync generates
