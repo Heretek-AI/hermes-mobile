@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@hermes/renderer": ["../../packages/renderer/src/index.ts"],
+      "@hermes/renderer/*": ["../../packages/renderer/src/*"],
+      "@hermes/ipc": ["../../packages/hermes-ipc/src/index.ts"],
+      "@hermes/ipc/*": ["../../packages/hermes-ipc/src/*"],
+      "posthog-js": ["../../packages/renderer/src/shims/posthog-js.ts"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts",
+    "../../packages/renderer/src/global.d.ts",
+    "../../packages/renderer/src/shims/**/*.d.ts",
+    "../../packages/shared/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "android",
+    "../../packages/shared/**/*.test.ts",
+    "../../packages/shared/i18n/index.ts"
+  ]
+}

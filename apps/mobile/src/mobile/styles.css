@@ -1,0 +1,90 @@
+/* Mobile-specific styles. Kept tiny — most styling comes from the
+ * vendored renderer's main.css. This file is just the safe-area +
+ * bottom-nav + haptics-glue bits that don't fit in a Tailwind class. */
+
+:root {
+  color-scheme: dark light;
+  --hermes-safe-top: env(safe-area-inset-top, 0px);
+  --hermes-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --hermes-safe-left: env(safe-area-inset-left, 0px);
+  --hermes-safe-right: env(safe-area-inset-right, 0px);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #0b0b0b;
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* The desktop's <Layout> renders inside a flex container; the mobile
+ * shell pins the bottom-nav below it. */
+.hermes-mobile-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: #0b0b0b;
+}
+
+.hermes-mobile-shell__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.hermes-mobile-shell__nav {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.6);
+  padding-bottom: var(--hermes-safe-bottom);
+  backdrop-filter: blur(12px);
+}
+
+.hermes-mobile-shell__tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  min-height: 48px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hermes-mobile-shell__tab--active {
+  color: #fff;
+}
+
+.hermes-mobile-shell__tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Hide desktop-only elements at small viewports. The desktop's <aside>
+ * sidebar is already hidden via Tailwind's lg:hidden, but we add this
+ * for the install-desktop banner and the menu bar (which never apply
+ * on mobile). */
+@media (max-width: 640px) {
+  .hermes-desktop-only {
+    display: none !important;
+  }
+}
