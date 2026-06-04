@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -53,6 +54,12 @@ fun MessageRow(message: MessageEntity) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
+        // The bubble wraps its content (not fillMaxWidth) so an
+        // empty assistant bubble that exists only because the
+        // first chunk hasn't arrived yet doesn't take up the
+        // whole screen. The parent Column still fills the width
+        // so the alignment (End for user, Start for assistant)
+        // resolves correctly.
         Box(
             modifier = Modifier
                 .padding(vertical = 4.dp)
@@ -65,30 +72,40 @@ fun MessageRow(message: MessageEntity) {
                     text = text,
                     color = onBubbleColor,
                 )
-            } else {
+            } else if (text.isNotBlank()) {
                 // Assistant messages get the full Markwon
                 // treatment (markdown, gfm tables, strikethrough,
                 // linkify). The Markwon instance is held in
                 // remember to avoid re-construction per recompose.
-                MarkdownText(text = text)
+                // Skip rendering when the text is blank (e.g. an
+                // empty assistant bubble that exists only because
+                // the first chunk hasn't arrived yet) — the
+                // ChatScreen shows a TypingIndicator in that case.
+                MarkdownText(text = text, color = onBubbleColor)
             }
         }
     }
 }
 
 @Composable
-private fun MarkdownText(text: String) {
+private fun MarkdownText(text: String, color: androidx.compose.ui.graphics.Color) {
     val context = LocalContext.current
     val markwon = remember(context) { Markwon.create(context) }
     AndroidView(
         modifier = Modifier.fillMaxWidth(),
         factory = { ctx ->
             TextView(ctx).apply {
-                setTextColor(android.graphics.Color.TRANSPARENT)
+                // Use the on-bubble color (passed in from the
+                // parent) instead of TRANSPARENT — the previous
+                // code set the color to TRANSPARENT to "let
+                // markwon own the colors" but that left empty
+                // assistant bubbles invisible during streaming.
+                setTextColor(color.toArgb())
             }
         },
         update = { tv ->
             markwon.setMarkdown(tv, text)
+            tv.setTextColor(color.toArgb())
         },
     )
 }

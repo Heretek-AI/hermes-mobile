@@ -8,10 +8,34 @@
     <string name="gateway_notif_action_stop">Stop</string>
     <string name="gateway_notif_action_open">Open Hermes</string>
 
-    <!-- Termux-missing install dialog (Phase 2) -->
+    <!--
+      Termux install CTAs. Surfaced from WelcomeScreen.kt's middle
+      InstallOptionCard when TermuxProbe reports Termux is not
+      installed. F-Droid is the primary action because the Play
+      Store build of Termux was abandoned years ago and is
+      incompatible with current Termux:API; GitHub Releases is the
+      side-load fallback. The Phase-2 missing-Termux dialog strings
+      are kept for future use (e.g. a snackbar from the install
+      stage if Termux disappears mid-install).
+    -->
     <string name="termux_missing_title">Termux Required</string>
     <string name="termux_missing_message">To run hermes-agent locally on Android, install Termux and Termux:API from F-Droid. Then return to Hermes to continue.</string>
     <string name="termux_install_action">Open F-Droid</string>
+    <string name="termux_install_github">Or get it from GitHub Releases</string>
+
+    <!--
+      Workstream C (RESULT_INTENT wiring). Surfaced from InstallScreen
+      when an install stage fails with ERR != RESULT_OK, which Termux's
+      RunCommandService returns when our app lacks
+      com.termux.permission.RUN_COMMAND or when Termux's
+      ~/.termux/termux.properties does not have
+      allow-external-apps=true. The "Open App Settings" button uses
+      HermesApi.openExternal with package:com.nousresearch.hermes so
+      the user lands directly on the Additional Permissions screen.
+    -->
+    <string name="termux_permission_needed_title">Termux permission needed</string>
+    <string name="termux_permission_needed_message">Hermes needs permission to run commands inside Termux. Grant the “Run commands inside Termux environment” permission in App info → Additional permissions, then retry. If you still see this after granting, open Termux and add allow-external-apps=true to ~/.termux/termux.properties, then run termux-reload-settings.</string>
+    <string name="termux_permission_open_settings">Open App Settings</string>
 
     <!--
       Pinned hermes-agent SHA. Updated by bumping

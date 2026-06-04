@@ -68,7 +68,40 @@ if [[ -f "$MANIFEST" && -f "$RUNNER_MANIFEST" ]]; then
   done < <(grep -E '<uses-permission[^/]*android:name=' "$RUNNER_MANIFEST")
 fi
 
-# 4. (Removed in Phase 0) HermesAPIPlugin registration and the
+# 4. Merge the <queries> block (Workstream C, atomic-wondering-sunrise
+#    plan). Android 11+ (API 30) requires apps to declare which other
+#    packages they call PackageManager.getPackageInfo on; without this
+#    block, TermuxProbe returns "not installed" even when Termux is
+#    actually installed, and HermesInstaller falls through to the
+#    bundled-Python backend. The runner's manifest is the source of
+#    truth for the block; we copy it once and detect-and-skip on
+#    subsequent runs.
+#
+#    B13 followup: probe specifically for `android:name="com.termux"`
+#    (the Termux package entry) rather than just `<queries>`. A library
+#    we depend on (or a future Capacitor plugin) might add an unrelated
+#    <queries> block first, and the old probe would silently skip the
+#    Termux visibility merge — re-introducing the API 30+ TermuxProbe
+#    bug Workstream C fixed.
+#
+#    Validation followup: the awk extractor MUST anchor `<queries>` to
+#    start-of-line so it doesn't accidentally match the literal string
+#    `<queries>` that appears inside the runner manifest's explanatory
+#    comment. Without the anchor, awk grabs from the comment's middle
+#    onward and the merged result is malformed XML
+#    (manifmerger crashes with "Error parsing AndroidManifest.xml").
+if [[ -f "$MANIFEST" && -f "$RUNNER_MANIFEST" ]] && ! grep -q 'android:name="com.termux"' "$MANIFEST"; then
+  QUERIES_BLOCK=$(awk '/^[[:space:]]*<queries>/,/^[[:space:]]*<\/queries>/' "$RUNNER_MANIFEST")
+  if [[ -n "$QUERIES_BLOCK" ]]; then
+    # Indent each line for readability inside the live manifest. The
+    # block is inserted directly before </manifest>; sed needs the
+    # block as a single line with literal \n separators.
+    INDENTED=$(printf '%s\n' "$QUERIES_BLOCK" | sed 's/^/    /' | sed ':a;N;$!ba;s/\n/\\n/g')
+    sed -i "s|</manifest>|${INDENTED}\n</manifest>|" "$MANIFEST"
+  fi
+fi
+
+# 5. (Removed in Phase 0) HermesAPIPlugin registration and the
 #    associated MainActivity.java BridgeActivity patch. The WebView
 #    path is gone; MainActivity is now Kotlin+Compose and lives under
 #    apps/mobile/android/app/src/main/kotlin/com/nousresearch/hermes/.

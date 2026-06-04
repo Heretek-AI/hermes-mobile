@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 
 /**
  * Runs shell commands inside a Termux environment via the
@@ -105,6 +107,121 @@ class TermuxRunner(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to dispatch RUN_COMMAND: ${e.message}")
             RunResult(false, false, logPath, e.message)
+        }
+    }
+
+    /**
+     * Workstream C variant of [run] that blocks the calling coroutine
+     * until Termux's RunCommandService broadcasts back the result via
+     * the `com.termux.RUN_COMMAND_PENDING_INTENT` mechanism (requires
+     * Termux >= 0.109; current F-Droid Termux 0.119+ is well above the
+     * floor).
+     *
+     * Returns a [BundledPythonRunner.PythonResult] populated with the
+     * REAL exit code, REAL stdout, REAL stderr — making every
+     * `HermesInstaller` shell stage that gates on `exitCode != 0`
+     * work correctly on the Termux backend.
+     *
+     * Caveats:
+     *  - stdout+stderr combined is truncated to ~100KB by Termux
+     *    (`stdout_original_length` / `stderr_original_length` carry
+     *    the pre-truncation size; we don't currently surface those).
+     *  - If the user hasn't granted `com.termux.permission.RUN_COMMAND`
+     *    OR Termux's `~/.termux/termux.properties` doesn't have
+     *    `allow-external-apps=true`, RunCommandService still fires the
+     *    result PendingIntent but with `err != RESULT_OK` and an
+     *    `errmsg`; the receiver promotes that to a non-zero exit code
+     *    so InstallScreen surfaces the actionable error.
+     *  - On Android pre-O (API < 26) [Context.startService] is used
+     *    in place of [Context.startForegroundService]; for the same
+     *    fire-and-forget reasons as [run].
+     *
+     * Cancellation: if the coroutine is cancelled before Termux fires
+     * the result PendingIntent, the receiver is unregistered via
+     * [TermuxResultRegistry.cancel] and the continuation is never
+     * resumed (consistent with `suspendCancellableCoroutine` semantics).
+     * The dispatched command may still complete inside Termux — there
+     * is no way to abort a RunCommand mid-flight from the caller side.
+     *
+     * Timeouts: callers wrap with `kotlinx.coroutines.withTimeout`
+     * when they want bounded waits (e.g. stage 5 pip install allows
+     * up to 30 minutes). This method does not impose its own timeout.
+     */
+    suspend fun runAndWait(
+        command: String,
+        cwd: String? = null,
+    ): BundledPythonRunner.PythonResult = suspendCancellableCoroutine { cont ->
+        if (!TermuxProbe.isTermuxInstalled(context)) {
+            cont.resume(
+                BundledPythonRunner.PythonResult(
+                    exitCode = -1,
+                    stdout = "",
+                    stderr = "Termux is not installed",
+                    process = null,
+                ),
+            )
+            return@suspendCancellableCoroutine
+        }
+
+        val sessionId = TermuxResultRegistry.register(context, cont)
+        val resultPi = TermuxResultRegistry.pendingIntentFor(context, sessionId)
+        cont.invokeOnCancellation { TermuxResultRegistry.cancel(sessionId) }
+
+        val intent = Intent().apply {
+            component = ComponentName(
+                TermuxProbe.TERMUX_PACKAGE,
+                "com.termux.app.RunCommandService",
+            )
+            action = "com.termux.RUN_COMMAND"
+            putExtra(
+                "com.termux.RUN_COMMAND_PATH",
+                "/data/data/${TermuxProbe.TERMUX_PACKAGE}/files/usr/bin/bash",
+            )
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
+            // Always run in background; we don't need an interactive
+            // Termux session for these install commands. Foreground
+            // mode also makes RUN_COMMAND_PENDING_INTENT misbehave
+            // (per the Termux wiki: stderr is null in foreground).
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            if (cwd != null) {
+                putExtra("com.termux.RUN_COMMAND_WORKDIR", cwd)
+            }
+            // The crucial Workstream C piece — without this extra
+            // RunCommandService runs fire-and-forget (the current
+            // run() path).
+            putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", resultPi)
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: SecurityException) {
+            // Same Android 12+ background-start guard as run(). We
+            // synthesize a failure result so the caller doesn't hang.
+            Log.e(TAG, "SecurityException dispatching RUN_COMMAND: ${e.message}")
+            TermuxResultRegistry.resolveSynthetic(
+                sessionId,
+                BundledPythonRunner.PythonResult(
+                    exitCode = -1,
+                    stdout = "",
+                    stderr = "TermuxRunner: SecurityException (${e.message ?: "unknown"})",
+                    process = null,
+                ),
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to dispatch RUN_COMMAND: ${e.message}")
+            TermuxResultRegistry.resolveSynthetic(
+                sessionId,
+                BundledPythonRunner.PythonResult(
+                    exitCode = -1,
+                    stdout = "",
+                    stderr = "TermuxRunner: dispatch failed (${e.message ?: "unknown"})",
+                    process = null,
+                ),
+            )
         }
     }
 
