@@ -22,9 +22,26 @@ for f in "$RUNNER/kotlin/com/nousresearch/hermes/"*.kt; do
   cp -f "$f" "$PKG_DIR/"
 done
 
-# 2. Copy res/values/strings.xml additions.
+# 2. Merge res/values/strings.xml additions. The cap add scaffold
+#    already has strings like title_activity_main that the
+#    generated AndroidManifest.xml references; overwriting
+#    strings.xml with the runner's would lose those, and
+#    processReleaseResources then fails with
+#      'resource string/title_activity_main not found'.
+#    Append any <string name="..."> from the runner that isn't
+#    already in the destination.
+DEST_STRINGS="$ANDROID/app/src/main/res/values/strings.xml"
 mkdir -p "$ANDROID/app/src/main/res/values"
-cp -f "$RUNNER/res/values/strings.xml" "$ANDROID/app/src/main/res/values/strings.xml"
+if [[ -f "$RUNNER_MANIFEST" ]]; then :; fi  # (no-op — keep helper for below)
+if [[ -f "$DEST_STRINGS" && -f "$RUNNER/res/values/strings.xml" ]]; then
+  while IFS= read -r line; do
+    name=$(echo "$line" | grep -oE 'name="[^"]+"' | head -1 | sed 's/name="//;s/"$//')
+    if [[ -n "$name" ]] && ! grep -q "name=\"$name\"" "$DEST_STRINGS"; then
+      # Insert before the closing </resources> tag.
+      sed -i "s|</resources>|    $line\n</resources>|" "$DEST_STRINGS"
+    fi
+  done < <(grep '<string ' "$RUNNER/res/values/strings.xml")
+fi
 
 # 3. Merge permissions from android-runner/AndroidManifest.xml into the
 #    generated AndroidManifest.xml. We append <uses-permission> tags
