@@ -1,0 +1,597 @@
+// The full HermesAPI contract — 188 methods, transcribed from
+// hermes-desktop/src/preload/index.d.ts. This is the single source of
+// truth shared between the desktop preload and the mobile Capacitor
+// plugin. Type errors at build time catch drift in either direction.
+//
+// On Electron, this is the `window.hermesAPI` global exposed by the
+// preload script. On Capacitor, the `mobile.ts` Proxy routes each
+// method through the native HermesAPIPlugin.
+
+import type { AppLocale } from "./shared/i18n";
+import type { Attachment } from "./shared/attachments";
+import type {
+  RegistryKind,
+  RegistryItem,
+  RegistryCatalog,
+  RegistryDetail,
+} from "./shared/registry";
+
+export type { AppLocale, Attachment, RegistryKind, RegistryItem, RegistryCatalog, RegistryDetail };
+
+// ---------------------------------------------------------------------------
+// Cross-platform value types
+// ---------------------------------------------------------------------------
+
+export interface InstallStatus {
+  installed: boolean;
+  configured: boolean;
+  hasApiKey: boolean;
+  verified: boolean;
+  activeProfile?: string;
+}
+
+export interface InstallProgress {
+  step: number;
+  totalSteps: number;
+  title: string;
+  detail: string;
+  log: string;
+}
+
+export interface ConfigHealthIssue {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  detail?: string;
+  locations: string[];
+  autoFixable: boolean;
+  fixDescription?: string;
+  fixLocation?: "providers" | "models" | ".env" | "config.yaml" | "setup";
+  context?: Record<string, string>;
+}
+
+export interface ConfigHealthReport {
+  ranAt: number;
+  profile: string;
+  issues: ConfigHealthIssue[];
+  summary: { errors: number; warnings: number; infos: number };
+}
+
+export interface ConfigFixLogEntry {
+  ts: number;
+  issueCode: string;
+  action: "migrate" | "autofix" | "manual-fix";
+  from?: string;
+  to?: string;
+  profile?: string;
+  valueMasked?: string;
+  detail?: string;
+}
+
+export interface CredentialPoolEntry {
+  id?: string;
+  label?: string;
+  auth_type?: "api_key" | "oauth_device_code" | string;
+  priority?: number;
+  source?: string;
+  access_token?: string;
+  refresh_token?: string;
+  api_key?: string;
+  base_url?: string;
+  request_count?: number;
+  key?: string;
+}
+
+export interface KanbanTask {
+  id: string;
+  title: string;
+  body: string | null;
+  assignee: string | null;
+  status: string;
+  priority: number;
+  tenant: string | null;
+  workspace_kind: string;
+  workspace_path: string | null;
+  created_by: string | null;
+  created_at: number | null;
+  started_at: number | null;
+  completed_at: number | null;
+  result: string | null;
+  skills: string[];
+  max_retries: number | null;
+}
+
+export interface KanbanBoard {
+  slug: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  is_current: boolean;
+  archived?: boolean;
+  total: number;
+  counts: Record<string, number>;
+  db_path?: string;
+}
+
+export interface KanbanComment {
+  id: number;
+  task_id: string;
+  author: string | null;
+  body: string;
+  created_at: number;
+}
+
+export interface KanbanEvent {
+  id: number;
+  task_id: string;
+  kind: string;
+  payload: Record<string, unknown> | null;
+  created_at: number;
+  run_id: number | null;
+}
+
+export interface KanbanRun {
+  id: number;
+  task_id: string;
+  profile: string | null;
+  status: string | null;
+  outcome: string | null;
+  summary: string | null;
+  error: string | null;
+  started_at: number | null;
+  ended_at: number | null;
+  last_heartbeat_at: number | null;
+}
+
+export interface KanbanTaskDetail {
+  task: KanbanTask;
+  comments: KanbanComment[];
+  events: KanbanEvent[];
+  parents: string[];
+  children: string[];
+  runs: KanbanRun[];
+  latest_summary: string | null;
+}
+
+export interface KanbanCreateTaskInput {
+  title: string;
+  body?: string;
+  assignee?: string;
+  priority?: number;
+  tenant?: string;
+  workspace?: string;
+  triage?: boolean;
+  skills?: string[];
+  maxRetries?: number;
+}
+
+export type ConnectionMode = "local" | "remote" | "ssh";
+
+export interface ConnectionConfig {
+  mode: ConnectionMode;
+  remoteUrl: string;
+  hasApiKey: boolean;
+  apiKeyLength: number;
+  ssh: {
+    host: string;
+    port: number;
+    username: string;
+    keyPath: string;
+    remotePort: number;
+    localPort: number;
+  };
+}
+
+export interface ChatReadiness {
+  ok: boolean;
+  code?:
+    | "NO_ACTIVE_MODEL"
+    | "NO_PROVIDER"
+    | "NO_BASE_URL"
+    | "MISSING_API_KEY"
+    | "GATEWAY_DOWN";
+  message?: string;
+  fixLocation?: "providers" | "models" | "gateway" | "setup";
+  expectedEnvKey?: string;
+}
+
+export interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cost?: number;
+  rateLimitRemaining?: number;
+  rateLimitReset?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+}
+
+export interface SessionSummary {
+  id: string;
+  source: string;
+  startedAt: number;
+  endedAt: number | null;
+  messageCount: number;
+  model: string;
+  title: string | null;
+  preview: string;
+}
+
+export interface CachedSessionSummary {
+  id: string;
+  title: string;
+  startedAt: number;
+  source: string;
+  messageCount: number;
+  model: string;
+}
+
+export interface SessionSearchHit {
+  sessionId: string;
+  title: string | null;
+  startedAt: number;
+  source: string;
+  messageCount: number;
+  model: string;
+  snippet: string;
+}
+
+export type SessionMessage =
+  | { kind: "user"; id: number; content: string; timestamp: number; attachments?: Attachment[] }
+  | { kind: "assistant"; id: number; content: string; timestamp: number; attachments?: Attachment[] }
+  | { kind: "reasoning"; id: number; assistantId: number; text: string; timestamp: number }
+  | { kind: "tool_call"; id: number; assistantId: number; callId: string; name: string; args: string; timestamp: number }
+  | { kind: "tool_result"; id: number; callId: string; name: string; content: string; timestamp: number; attachments?: Attachment[] };
+
+export interface ProfileInfo {
+  name: string;
+  path: string;
+  isDefault: boolean;
+  isActive: boolean;
+  model: string;
+  provider: string;
+  hasEnv: boolean;
+  hasSoul: boolean;
+  skillCount: number;
+  gatewayRunning: boolean;
+}
+
+export interface CronJob {
+  id: string;
+  name: string;
+  schedule: string;
+  prompt: string;
+  state: "active" | "paused" | "completed";
+  enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  repeat: { times: number | null; completed: number } | null;
+  deliver: string[];
+  skills: string[];
+  script: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// HermesAPI — the IPC contract
+// ---------------------------------------------------------------------------
+
+export interface HermesAPI {
+  // ---- Installation ----
+  checkInstall: () => Promise<InstallStatus>;
+  verifyInstall: () => Promise<boolean>;
+  startInstall: () => Promise<{ success: boolean; error?: string }>;
+  inspectInstallTarget: () => Promise<{
+    hermesHome: string;
+    repoPath: string;
+    state: "fresh" | "update" | "replace";
+  }>;
+  validateHermesHome: (dir: string) => Promise<boolean>;
+  adoptHermesHome: (dir: string) => Promise<boolean>;
+  quitApp: () => Promise<void>;
+  onInstallProgress: (cb: (p: InstallProgress) => void) => () => void;
+
+  // ---- Hermes engine info ----
+  getHermesVersion: () => Promise<string | null>;
+  refreshHermesVersion: () => Promise<string | null>;
+  runHermesDoctor: () => Promise<string>;
+  runHermesUpdate: () => Promise<{ success: boolean; error?: string }>;
+
+  // ---- OpenClaw migration ----
+  checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
+  runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
+
+  // ---- OAuth provider sign-in ----
+  oauthLogin: (provider: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  cancelOAuthLogin: () => Promise<boolean>;
+  onOAuthLoginProgress: (cb: (chunk: string) => void) => () => void;
+
+  // ---- Locale ----
+  getLocale: () => Promise<AppLocale>;
+  setLocale: (locale: AppLocale) => Promise<AppLocale>;
+
+  // ---- Configuration (profile-aware) ----
+  getEnv: (profile?: string) => Promise<Record<string, string>>;
+  setEnv: (key: string, value: string, profile?: string) => Promise<boolean>;
+  validateChatReadiness: (profile?: string) => Promise<ChatReadiness>;
+
+  // ---- Config-health audit ----
+  getConfigHealth: (profile?: string) => Promise<ConfigHealthReport>;
+  rerunConfigHealth: (profile?: string) => Promise<ConfigHealthReport>;
+  autofixConfigIssue: (code: string, profile?: string, context?: Record<string, string>) => Promise<{ ok: boolean; message?: string }>;
+  getConfigFixLog: (maxEntries?: number) => Promise<ConfigFixLogEntry[]>;
+  getConfig: (key: string, profile?: string) => Promise<string | null>;
+  setConfig: (key: string, value: string, profile?: string) => Promise<boolean>;
+  getHermesHome: (profile?: string) => Promise<string>;
+  getModelConfig: (profile?: string) => Promise<{ provider: string; model: string; baseUrl: string }>;
+  setModelConfig: (provider: string, model: string, baseUrl: string, profile?: string) => Promise<boolean>;
+
+  // ---- Connection mode ----
+  isRemoteMode: () => Promise<boolean>;
+  isRemoteOnlyMode: () => Promise<boolean>;
+  getConnectionConfig: () => Promise<ConnectionConfig>;
+  setConnectionConfig: (mode: ConnectionMode, remoteUrl: string, apiKey?: string) => Promise<boolean>;
+  setSshConfig: (
+    host: string,
+    port: number,
+    username: string,
+    keyPath: string,
+    remotePort: number,
+    localPort: number,
+  ) => Promise<boolean>;
+  testRemoteConnection: (url: string, apiKey?: string) => Promise<boolean>;
+  testSshConnection: (
+    host: string,
+    port: number,
+    username: string,
+    keyPath: string,
+    remotePort: number,
+  ) => Promise<boolean>;
+  isSshTunnelActive: () => Promise<boolean>;
+  startSshTunnel: () => Promise<boolean>;
+  stopSshTunnel: () => Promise<boolean>;
+
+  // ---- Chat ----
+  sendMessage: (
+    message: string,
+    profile?: string,
+    resumeSessionId?: string,
+    history?: Array<{ role: string; content: string }>,
+    attachments?: Attachment[],
+    contextFolder?: string,
+  ) => Promise<{ response: string; sessionId?: string }>;
+  abortChat: () => Promise<void>;
+  transcribeAudio: (audio: Uint8Array, mimeType: string, profile?: string) => Promise<string>;
+  getApiServerKeyStatus: (profile?: string) => Promise<{ hasKey: boolean }>;
+  generateApiServerKey: (profile?: string) => Promise<{ key: string }>;
+  copyToClipboard: (text: string) => Promise<void>;
+  onContextMenuCopyChat: (cb: (format: "text" | "markdown") => void) => () => void;
+  onContextMenuSelectBubble: (cb: (point: { x: number; y: number }) => void) => () => void;
+  readMediaFile: (filePath: string) => Promise<string | null>;
+  saveMediaFile: (src: string, name: string) => Promise<boolean>;
+  mediaFileExists: (filePath: string) => Promise<boolean>;
+  showMediaMenu: (src: string, name: string, labels: { open: string; saveAs: string }) => void;
+  getPathForFile: (file: File) => string;
+  stageAttachment: (sessionId: string, filename: string, base64Bytes: string) => Promise<string>;
+  clearStagedAttachments: (sessionId: string) => Promise<void>;
+  discoverProviderModels: (
+    provider: string,
+    baseUrl?: string,
+    apiKey?: string,
+    profile?: string,
+  ) => Promise<{
+    models: string[];
+    status: "ok" | "no-key" | "unsupported" | "unknown-host";
+    cached: boolean;
+    freeModels?: string[];
+  }>;
+  onChatChunk: (cb: (chunk: string) => void) => () => void;
+  onChatReasoningChunk: (cb: (chunk: string) => void) => () => void;
+  onChatDone: (cb: (sessionId?: string) => void) => () => void;
+  onChatToolProgress: (cb: (tool: string) => void) => () => void;
+  onChatUsage: (cb: (usage: ChatUsage) => void) => () => void;
+  onChatError: (cb: (error: string) => void) => () => void;
+
+  // ---- Gateway ----
+  startGateway: () => Promise<boolean>;
+  stopGateway: () => Promise<boolean>;
+  gatewayStatus: () => Promise<boolean>;
+
+  // ---- Platform toggles ----
+  getPlatformEnabled: (profile?: string) => Promise<Record<string, boolean>>;
+  setPlatformEnabled: (platform: string, enabled: boolean, profile?: string) => Promise<boolean>;
+
+  // ---- Sessions ----
+  listSessions: (limit?: number, offset?: number) => Promise<SessionSummary[]>;
+  getSessionMessages: (sessionId: string) => Promise<SessionMessage[]>;
+
+  // ---- Profiles ----
+  listProfiles: () => Promise<ProfileInfo[]>;
+  createProfile: (name: string, clone: boolean) => Promise<{ success: boolean; error?: string }>;
+  deleteProfile: (name: string) => Promise<{ success: boolean; error?: string }>;
+  setActiveProfile: (name: string) => Promise<boolean>;
+
+  // ---- Memory ----
+  readMemory: (profile?: string) => Promise<{
+    memory: { content: string; exists: boolean; lastModified: number | null };
+    user: { content: string; exists: boolean; lastModified: number | null };
+    stats: { totalSessions: number; totalMessages: number };
+  }>;
+  addMemoryEntry: (content: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  updateMemoryEntry: (index: number, content: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  removeMemoryEntry: (index: number, profile?: string) => Promise<boolean>;
+  writeUserProfile: (content: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // ---- Soul ----
+  readSoul: (profile?: string) => Promise<string>;
+  writeSoul: (content: string, profile?: string) => Promise<boolean>;
+  resetSoul: (profile?: string) => Promise<string>;
+
+  // ---- Tools ----
+  getToolsets: (profile?: string) => Promise<Array<{ key: string; label: string; description: string; enabled: boolean }>>;
+  setToolsetEnabled: (key: string, enabled: boolean, profile?: string) => Promise<boolean>;
+
+  // ---- Skills ----
+  listInstalledSkills: (profile?: string) => Promise<Array<{ name: string; category: string; description: string; path: string }>>;
+  listBundledSkills: () => Promise<Array<{ name: string; description: string; category: string; source: string; installed: boolean }>>;
+  getSkillContent: (skillPath: string) => Promise<string>;
+  installSkill: (identifier: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  uninstallSkill: (name: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // ---- Session cache ----
+  listCachedSessions: (limit?: number, offset?: number) => Promise<CachedSessionSummary[]>;
+  syncSessionCache: () => Promise<CachedSessionSummary[]>;
+  updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  deleteSessions: (sessionIds: string[]) => Promise<{ requested: number; deleted: number }>;
+
+  // ---- Session search ----
+  searchSessions: (query: string, limit?: number) => Promise<SessionSearchHit[]>;
+
+  // ---- Credential Pool ----
+  getCredentialPool: (profile?: string) => Promise<Record<string, CredentialPoolEntry[]>>;
+  setCredentialPool: (provider: string, entries: CredentialPoolEntry[], profile?: string) => Promise<boolean>;
+  addCredentialPoolEntry: (provider: string, apiKey: string, label: string, profile?: string) => Promise<CredentialPoolEntry[]>;
+
+  // ---- Models ----
+  listModels: () => Promise<Array<{ id: string; name: string; provider: string; model: string; baseUrl: string; createdAt: number }>>;
+  addModel: (name: string, provider: string, model: string, baseUrl: string) => Promise<{ id: string; name: string; provider: string; model: string; baseUrl: string; createdAt: number }>;
+  removeModel: (id: string) => Promise<boolean>;
+  updateModel: (id: string, fields: Record<string, string>) => Promise<boolean>;
+
+  // ---- Claw3D ----
+  claw3dStatus: () => Promise<{
+    cloned: boolean;
+    installed: boolean;
+    devServerRunning: boolean;
+    adapterRunning: boolean;
+    port: number;
+    portInUse: boolean;
+    wsUrl: string;
+    running: boolean;
+    error: string;
+    remoteUrl?: string | null;
+    remoteSource?: "ssh" | null;
+  }>;
+  claw3dSetup: () => Promise<{ success: boolean; error?: string }>;
+  onClaw3dSetupProgress: (cb: (p: { step: number; totalSteps: number; title: string; detail: string; log: string }) => void) => () => void;
+  claw3dGetPort: () => Promise<number>;
+  claw3dSetPort: (port: number) => Promise<boolean>;
+  claw3dGetWsUrl: () => Promise<string>;
+  claw3dSetWsUrl: (url: string) => Promise<boolean>;
+  claw3dStartAll: (profile?: string) => Promise<{ success: boolean; error?: string }>;
+  claw3dStopAll: () => Promise<boolean>;
+  claw3dGetLogs: () => Promise<string>;
+  claw3dStartDev: () => Promise<boolean>;
+  claw3dStopDev: () => Promise<boolean>;
+  claw3dStartAdapter: () => Promise<boolean>;
+  claw3dStopAdapter: () => Promise<boolean>;
+
+  // ---- Updates ----
+  checkForUpdates: () => Promise<string | null>;
+  downloadUpdate: () => Promise<boolean>;
+  installUpdate: () => Promise<void>;
+  getAppVersion: () => Promise<string>;
+  onUpdateAvailable: (cb: (info: { version: string; releaseNotes: string }) => void) => () => void;
+  onUpdateDownloadProgress: (cb: (info: { percent: number }) => void) => () => void;
+  onUpdateDownloaded: (cb: () => void) => () => void;
+  onUpdateError: (cb: (message: string) => void) => () => void;
+
+  // ---- Menu events ----
+  onMenuNewChat: (cb: () => void) => () => void;
+  onMenuSearchSessions: (cb: () => void) => () => void;
+
+  // ---- Cron Jobs ----
+  listCronJobs: (includeDisabled?: boolean, profile?: string) => Promise<CronJob[]>;
+  createCronJob: (schedule: string, prompt?: string, name?: string, deliver?: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  removeCronJob: (jobId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  pauseCronJob: (jobId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  resumeCronJob: (jobId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  triggerCronJob: (jobId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // ---- Kanban ----
+  kanbanListBoards: (includeArchived?: boolean, profile?: string) => Promise<{ success: boolean; data?: KanbanBoard[]; error?: string; unsupportedMode?: boolean }>;
+  kanbanCurrentBoard: (profile?: string) => Promise<{ success: boolean; data?: string; error?: string }>;
+  kanbanSwitchBoard: (slug: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanCreateBoard: (slug: string, name?: string, switchAfter?: boolean, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanRemoveBoard: (slug: string, hardDelete?: boolean, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanListTasks: (filters?: { status?: string; assignee?: string; tenant?: string; includeArchived?: boolean; profile?: string }) => Promise<{ success: boolean; data?: KanbanTask[]; error?: string }>;
+  kanbanGetTask: (taskId: string, profile?: string) => Promise<{ success: boolean; data?: KanbanTaskDetail; error?: string }>;
+  kanbanCreateTask: (input: KanbanCreateTaskInput, profile?: string) => Promise<{ success: boolean; data?: { id: string }; error?: string }>;
+  selectFolder: () => Promise<string | null>;
+  readDirectory: (dirPath: string) => Promise<{ name: string; isDirectory: boolean }[] | null>;
+  readFile: (filePath: string, maxBytes?: number) => Promise<{ content: string; truncated: boolean } | null>;
+  openFileInEditor: (filePath: string) => Promise<boolean>;
+  readImageFile: (filePath: string) => Promise<string | null>;
+  kanbanAssignTask: (taskId: string, assignee: string | null, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanCompleteTask: (taskId: string, result?: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanBlockTask: (taskId: string, reason?: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanUnblockTask: (taskId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanArchiveTask: (taskId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanSpecifyTask: (taskId: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanReclaimTask: (taskId: string, reason?: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanCommentTask: (taskId: string, body: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+  kanbanDispatchOnce: (dryRun?: boolean, profile?: string) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+  kanbanListClaw3dHqTasks: () => Promise<{ success: boolean; data?: KanbanTask[]; error?: string }>;
+
+  // ---- Shell ----
+  openExternal: (url: string) => Promise<void>;
+
+  // ---- Backup / Import ----
+  runHermesBackup: (profile?: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  runHermesImport: (archivePath: string, profile?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // ---- Debug dump ----
+  runHermesDump: () => Promise<string>;
+
+  // ---- Memory providers ----
+  discoverMemoryProviders: (profile?: string) => Promise<Array<{ name: string; description: string; installed: boolean; active: boolean; envVars: string[] }>>;
+
+  // ---- MCP servers ----
+  listMcpServers: (profile?: string) => Promise<Array<{ name: string; type: string; enabled: boolean; detail: string }>>;
+
+  // ---- Discover marketplace ----
+  fetchRegistry: (force?: boolean) => Promise<RegistryCatalog & { error?: string }>;
+  listInstalledRegistry: (profile?: string) => Promise<{ skills: string[]; mcps: string[]; workflows: string[] }>;
+  fetchRegistryDetail: (kind: RegistryKind, item: RegistryItem) => Promise<RegistryDetail>;
+  installRegistryItem: (kind: RegistryKind, item: RegistryItem, profile?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // ---- Log viewer ----
+  readLogs: (logFile?: string, lines?: number) => Promise<{ content: string; path: string }>;
+
+  // ---- Mobile-only extensions ----
+  /** True when running inside a Capacitor WebView on Android. */
+  isAndroid: () => Promise<boolean>;
+  /** True when running on a Termux-equipped device. */
+  getTermuxStatus: () => Promise<{ installed: boolean; hasApi: boolean }>;
+  /** Battery optimization exemption — Android 14+ requires user opt-in. */
+  requestIgnoreBatteryOptimizations: () => Promise<boolean>;
+  getBatteryOptStatus: () => Promise<{ ignoring: boolean }>;
+  /** Foreground service control for local gateway. */
+  setStartOnBoot: (enabled: boolean) => Promise<boolean>;
+  getStartOnBoot: () => Promise<boolean>;
+  /** Crash reporting opt-in toggle. */
+  setCrashReportingEnabled: (enabled: boolean) => Promise<boolean>;
+  getCrashReportingEnabled: () => Promise<boolean>;
+  /** Analytics event stub — opt-in only. */
+  trackEvent: (name: string, props?: Record<string, unknown>) => Promise<void>;
+  /** Voice capture via WebView MediaRecorder. */
+  startVoiceCapture: () => Promise<{ id: string }>;
+  stopVoiceCapture: (id: string) => Promise<{ mimeType: string; base64: string }>;
+  /** Server-side code highlight to keep the syntax-highlighter JS out of the bundle. */
+  highlightCode: (lang: string, source: string) => Promise<string>;
+  /** Open a hermes file in the system files app. */
+  openHermesHomeInFiles: () => Promise<void>;
+  /** Share text via the system share sheet. */
+  shareText: (text: string, title?: string) => Promise<void>;
+  /** Haptics — used by chat for "message sent" feedback. */
+  haptic: (style?: "light" | "medium" | "heavy") => Promise<void>;
+  /** Deep-link events. */
+  onDeepLink: (cb: (url: string) => void) => () => void;
+  /** Share-intent events. */
+  onSharedText: (cb: (text: string) => void) => () => void;
+  /** Gateway state change events from the foreground service. */
+  onGatewayStateChange: (cb: (state: { running: boolean; port: number; pid: number | null; lastError: string | null; uptime: number }) => void) => () => void;
+}
