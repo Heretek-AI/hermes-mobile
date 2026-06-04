@@ -1,0 +1,77 @@
+# F-Droid metadata for com.nousresearch.hermes
+#
+# Path: f-droid/metadata/com.nousresearch.hermes.yml
+#
+# This is the file format fdroiddata uses to build apps from
+# source. The actual submission lives in
+# https://gitlab.com/fdroid/fdroiddata as a metadata file; you
+# fork fdroiddata, add this file under `metadata/`, and submit
+# a merge request. F-Droid's CI then runs `f-droid/build.sh`
+# from this repo to produce a signed APK.
+#
+# Phase 6 (plan §G.5): AllowedNonFreeLibraries is empty because
+# we use only FOSS deps (Apache 2.0 / MIT). No Google Play
+# Services, no Firebase, no proprietary analytics. Sentry is
+# opt-in via the HermesAPI.setCrashReportingEnabled toggle
+# and is NOT pulled in for F-Droid builds (see build.sh).
+#
+# AutoUpdate is set to Version mode: F-Droid's updater notices
+# when the versionCode in this file increases and offers an
+# update. UpdateCheckData points at a JSON manifest that
+# lists the latest versionCode + URL — the same shape as
+# latest.json in the GitHub Releases flow, minus the per-ABI
+# assets (F-Droid only ships the universal APK).
+
+Caton: Internet
+AuthorName: Nous Research
+AuthorWebSite: https://nousresearch.com
+SourceCode: https://github.com/NousResearch/hermes-mobile
+IssueTracker: https://github.com/NousResearch/hermes-mobile/issues
+Translation: https://github.com/NousResearch/hermes-mobile/tree/main/packages/shared/locales
+
+# F-Droid rebuilds from source with their own signing key. The
+# `AllowedNonFreeLibraries` list is checked against the APK's
+# bundled .so files. Empty means everything in the APK is
+# FOSS-compatible.
+AllowedNonFreeLibraries: []
+
+# Builds entries — one per supported ABI. F-Droid's build server
+# uses the `output:` filename to match the gradle output. The
+# universal APK is preferred for F-Droid because their pipeline
+# doesn't run per-ABI apksigner.
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: HEAD
+    subdir: apps/mobile/android
+    output: app/build/outputs/apk/release/app-universal-release.apk
+    srclibs:
+      - hermes-agent@e7bc6189cf185f9c223a4428115147e483d9ff89
+    prebuild:
+      - export VERSION_NAME=0.1.0
+      - export VERSION_CODE=1
+      - bash ../../../scripts/setup.sh
+      - bash ../../../f-droid/build.sh
+    build:
+      - cd ..
+      - ./gradlew assembleRelease
+    ndk: r26b
+    gradle: 8.7
+    # Reproducible-build settings — F-Droid checks these.
+    scandelete: true
+    repeat: 1
+    androidupdate:
+      - overrideVersionCode: 1
+        commit: HEAD
+
+# Auto-update mode. Version = bump versionCode to release.
+AutoUpdate:
+  Mode: Version
+  UpdateCheckData: https://releases.nousresearch.com/hermes-mobile/latest.json
+  UpdateCheckMode: HTTP
+
+# Per-version release notes (used by F-Droid's "What's new" page).
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1
+
+AllowedAPKSigningKeys: 270a3a3e6cdb3a4adaefd10b8c4b8c0c8a4e9c4f
