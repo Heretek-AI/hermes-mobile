@@ -1,5 +1,6 @@
 package com.nousresearch.hermes.ui.chat
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +17,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,18 +32,12 @@ import com.nousresearch.hermes.HermesApi
 import com.nousresearch.hermes.chat.MessageEntity
 
 /**
- * ChatScreen — the root Composable for the Chat tab. Composes
- * the message list, the input row, and the empty state.
+ * ChatScreen — the root Composable for the Chat tab.
  *
- * Phase 4 scope:
- * - ✅ Message list (LazyColumn) with auto-scroll to bottom
- * - ✅ User / assistant bubbles (MessageRow with Markwon)
- * - ✅ Composer with send / stop / slash menu
- * - ✅ Empty state with 6 suggestion chips
- * - ❌ Voice input — stub (Phase D)
- * - ❌ Drag-and-drop file attachments — Phase D
+ * Phase 5 polish: long-press on a chat bubble opens a
+ * [MessageContextMenu] with Copy + Select actions.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ChatScreen(hermes: HermesApi) {
     val viewModel: ChatViewModel = viewModel(
@@ -49,8 +47,8 @@ fun ChatScreen(hermes: HermesApi) {
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    var contextMenuFor by remember { mutableStateOf<Long?>(null) }
 
-    // Auto-scroll to bottom when a new message lands.
     LaunchedEffect(state.messages.size, state.isLoading) {
         if (state.messages.isNotEmpty()) {
             listState.animateScrollToItem(state.messages.size - 1)
@@ -59,9 +57,7 @@ fun ChatScreen(hermes: HermesApi) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Hermes") },
-            )
+            TopAppBar(title = { Text("Hermes") })
         },
     ) { padding ->
         Column(
@@ -89,7 +85,16 @@ fun ChatScreen(hermes: HermesApi) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.messages, key = { it.id.takeIf { id -> id != 0L } ?: it.hashCode().toLong() }) { msg ->
-                        MessageRow(msg)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {},
+                                    onLongClick = { contextMenuFor = msg.id },
+                                ),
+                        ) {
+                            MessageRow(msg)
+                        }
                     }
                     if (state.isLoading) {
                         item { TypingIndicator() }
@@ -99,10 +104,27 @@ fun ChatScreen(hermes: HermesApi) {
             ChatInput(
                 value = state.currentInput,
                 isLoading = state.isLoading,
+                isRecording = state.isRecording,
+                attachments = state.attachments,
                 onValueChange = viewModel::onInputChanged,
                 onSend = viewModel::send,
                 onStop = viewModel::abort,
+                onStartVoice = viewModel::startVoiceCapture,
+                onStopVoice = viewModel::stopVoiceCapture,
+                onCancelVoice = viewModel::cancelVoiceCapture,
+                onAttachFile = viewModel::attachFile,
+                onRemoveAttachment = viewModel::removeAttachment,
+                hermes = hermes,
             )
         }
+    }
+
+    contextMenuFor?.let { id ->
+        MessageContextMenu(
+            expanded = true,
+            onDismiss = { contextMenuFor = null },
+            onCopy = { viewModel.copyBubbleText(id) },
+            onSelect = { viewModel.selectBubble(id) },
+        )
     }
 }

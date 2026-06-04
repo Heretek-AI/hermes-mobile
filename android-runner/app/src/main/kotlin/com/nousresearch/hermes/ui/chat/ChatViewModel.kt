@@ -13,16 +13,23 @@ import java.util.UUID
 
 /**
  * ChatViewModel — drives the Chat screen. Holds the in-flight
- * message list, the streaming chunk buffer, and the loading
- * flag.
+ * message list, the streaming chunk buffer, the loading flag,
+ * voice capture state, and attachment state.
  *
- * Phase 4 wiring:
- * - `sendMessage` calls HermesApi.sendMessage on a viewModelScope
- *   coroutine; chunks accumulate into the active assistant bubble.
- * - The `isLoading` flag flips to true on send, back to false
- *   on chatDone / chatError / abortChat.
- * - On every `chatChunk` event, the in-flight assistant message
- *   gets the chunk appended; the LazyColumn re-renders.
+ * Phase 5 wiring (in addition to Phase 4):
+ * - Voice capture: [startVoiceCapture] calls HermesApi
+ *   (which checks RECORD_AUDIO permission); on success
+ *   transitions to Recording. [stopVoiceCapture] reads the
+ *   recorded bytes and calls [HermesApi.transcribeAudio] →
+ *   the transcript becomes the new chat input.
+ * - Attachments: [attachFile] calls [HermesApi.stageAttachment]
+ *   which writes the base64-decoded bytes to a per-session
+ *   staging dir. The next send includes the paths in the
+ *   message.
+ * - Context menu: long-press on a chat bubble emits
+ *   [HermesApi.onContextMenuCopyChat] / [onContextMenuSelectBubble].
+ * - Deep link: [handleDeepLink] inspects hermes:// URIs and
+ *   routes chat/skill URIs to the right screen.
  */
 class ChatViewModel(private val hermes: HermesApi) : ViewModel() {
 
@@ -34,16 +41,20 @@ class ChatViewModel(private val hermes: HermesApi) : ViewModel() {
         val currentModel: String = "gpt-4o-mini",
         val currentProvider: String = "openai",
         val errorMessage: String? = null,
+        val isRecording: Boolean = false,
+        val attachments: List<String> = emptyList(),
+        val transcript: String? = null,
     )
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
+    private var voiceBase64: String = ""
+    private var voiceMime: String = "audio/webm"
+
     init {
         // Stream chunks → append to the in-flight assistant
-        // bubble. The "active assistant" is the last message in
-        // the list whose kind is "assistant" and which is being
-        // streamed (we set isLoading while it accumulates).
+        // bubble.
         viewModelScope.launch {
             hermes.chatChunk.collect { chunk ->
                 _state.update { s ->
@@ -52,7 +63,6 @@ class ChatViewModel(private val hermes: HermesApi) : ViewModel() {
                         val last = msgs.removeAt(msgs.lastIndex)
                         msgs.add(last.copy(content = (last.content ?: "") + chunk))
                     } else {
-                        // First chunk of a new assistant turn.
                         msgs.add(
                             MessageEntity(
                                 sessionId = s.activeSessionId ?: "",
@@ -77,6 +87,21 @@ class ChatViewModel(private val hermes: HermesApi) : ViewModel() {
                 _state.update { it.copy(isLoading = false, errorMessage = msg) }
             }
         }
+        // Phase 5: when the user shares text from another app,
+        // the MainActivity onNewIntent emits to sharedText. We
+        // pre-fill the chat input with the shared text.
+        viewModelScope.launch {
+            hermes.sharedText.collect { text ->
+                _state.update { it.copy(currentInput = text) }
+            }
+        }
+        // Phase 5: deep links route to chat by setting the
+        // session id (the URI's last path segment).
+        viewModelScope.launch {
+            hermes.deepLink.collect { uri ->
+                handleDeepLink(uri)
+            }
+        }
     }
 
     fun onInputChanged(text: String) {
@@ -85,36 +110,127 @@ class ChatViewModel(private val hermes: HermesApi) : ViewModel() {
 
     fun send() {
         val text = _state.value.currentInput.trim()
-        if (text.isEmpty() || _state.value.isLoading) return
+        if ((text.isEmpty() && _state.value.attachments.isEmpty()) || _state.value.isLoading) return
         val sessionId = _state.value.activeSessionId ?: UUID.randomUUID().toString()
-        // Optimistically insert the user message into the list
-        // so the UI updates immediately. HermesApi.sendMessage
-        // also writes the row to the DB; the optimistic insert
-        // gets replaced on the next DB refresh (Phase D wires
-        // Room's Flow as the source of truth — for now the
-        // in-memory list is the source of truth and the DB
-        // persists between sessions).
+        // Compose the user message body: text + attachment list
+        val body = buildString {
+            if (text.isNotEmpty()) append(text)
+            if (_state.value.attachments.isNotEmpty()) {
+                if (isNotEmpty()) append("\n\n")
+                append("Attached:\n")
+                _state.value.attachments.forEach { append("  - file://$it\n") }
+            }
+        }
         _state.update {
             it.copy(
                 messages = it.messages + MessageEntity(
                     sessionId = sessionId,
                     kind = "user",
                     role = "user",
-                    content = text,
+                    content = body,
                     timestamp = System.currentTimeMillis(),
                 ),
                 currentInput = "",
                 isLoading = true,
                 activeSessionId = sessionId,
+                attachments = emptyList(),
             )
         }
         viewModelScope.launch {
-            hermes.sendMessage(message = text, resumeSessionId = sessionId)
+            hermes.sendMessage(message = body, resumeSessionId = sessionId)
         }
     }
 
     fun abort() {
         hermes.abortChat()
         _state.update { it.copy(isLoading = false) }
+    }
+
+    // ── Phase 5: voice capture ────────────────────────────────
+
+    /** Start a voice recording. The actual MediaRecorder work
+     *  is delegated to the system intent (ACTION_RECORD_SOUND)
+     *  for v1; the returned URI is read back to base64. */
+    fun startVoiceCapture() {
+        val start = hermes.startVoiceCapture() ?: run {
+            _state.update { it.copy(errorMessage = "RECORD_AUDIO permission denied") }
+            return
+        }
+        _state.update { it.copy(isRecording = true) }
+        // Mark the start of the recording; the actual capture
+        // happens via the system recorder launched from the
+        // ChatScreen. We track a session id in the ViewModel
+        // for stopVoiceCapture.
+        voiceSessionId = start.id
+    }
+
+    private var voiceSessionId: String? = null
+
+    fun stopVoiceCapture(base64: String, mimeType: String) {
+        voiceBase64 = base64
+        voiceMime = mimeType
+        _state.update { it.copy(isRecording = false) }
+        viewModelScope.launch {
+            val sid = voiceSessionId ?: return@launch
+            val result = hermes.stopVoiceCapture(sid, base64, mimeType)
+            // Transcribe via the gateway; populate currentInput
+            val transcript = hermes.transcribeAudio(
+                bytes = android.util.Base64.decode(result.base64, android.util.Base64.DEFAULT),
+                mimeType = result.mimeType,
+            )
+            _state.update { it.copy(currentInput = transcript, transcript = transcript) }
+        }
+    }
+
+    fun cancelVoiceCapture() {
+        _state.update { it.copy(isRecording = false) }
+    }
+
+    // ── Phase 5: attachments ──────────────────────────────────
+
+    fun attachFile(name: String, base64: String) {
+        val sessionId = _state.value.activeSessionId ?: UUID.randomUUID().toString()
+        val path = hermes.stageAttachment(sessionId, name, base64)
+        _state.update {
+            it.copy(
+                attachments = it.attachments + path,
+                activeSessionId = sessionId,
+            )
+        }
+    }
+
+    fun removeAttachment(path: String) {
+        _state.update { it.copy(attachments = it.attachments.filter { it != path }) }
+    }
+
+    // ── Phase 5: context menu ─────────────────────────────────
+
+    fun copyBubbleText(messageId: Long) {
+        val msg = _state.value.messages.firstOrNull { it.id == messageId } ?: return
+        val text = msg.content ?: msg.text ?: return
+        hermes.copyToClipboard(text)
+        viewModelScope.launch { hermes.onContextMenuCopyChat(text) }
+    }
+
+    fun selectBubble(messageId: Long) {
+        viewModelScope.launch { hermes.onContextMenuSelectBubble(messageId.toString()) }
+    }
+
+    // ── Phase 5: deep link ────────────────────────────────────
+
+    private fun handleDeepLink(uri: String) {
+        // hermes://chat/<sessionId> — resume that session
+        // hermes://skill/<name> — open skill detail (Phase 5 v1: no-op)
+        val parsed = android.net.Uri.parse(uri)
+        when (parsed.host) {
+            "chat" -> {
+                val sid = parsed.lastPathSegment
+                if (sid != null) {
+                    _state.update { it.copy(activeSessionId = sid) }
+                }
+            }
+            // skill / others are no-ops in v1; Phase 5 final
+            // wires skill -> SkillsScreen nav.
+        }
     }
 }
