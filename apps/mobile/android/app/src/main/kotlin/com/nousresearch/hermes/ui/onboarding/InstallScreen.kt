@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import com.nousresearch.hermes.HermesApi
 import com.nousresearch.hermes.HermesInstaller
 import com.nousresearch.hermes.R
-import kotlinx.coroutines.flow.collectLatest
 
 /**
  * InstallScreen — runs the 8-stage Hermes installer.
