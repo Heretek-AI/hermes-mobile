@@ -40,6 +40,26 @@ apply plugin: 'kotlin-android'
 // apply plugin: 'com.android.bundle'  // Phase 6: for Play Store AAB (v2, not v1)
 // apply plugin: 'io.sentry.android.gradle'  // Phase 6 opt-in
 
+// Align the Java and Kotlin JVM targets. The cap scaffold's
+// default sets Java to source/target 1.8 (warning: '[options]
+// target value 8 is obsolete'); Kotlin defaults to the running
+// JDK (Java 21 in CI since the 10th run). The 14th smoke run
+// (#26929175677) failed at ':app:compileReleaseKotlin' with:
+//   'Inconsistent JVM-target compatibility detected for tasks
+//    compileReleaseJavaWithJavac (1.8) and compileReleaseKotlin (21).'
+// Pin both to 21 — the JDK we install in CI.
+android {
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+    }
+}
+
 android {
     namespace 'com.nousresearch.hermes'
     compileSdk 36  // Android 16 — androidx.core:core:1.17.0 and
