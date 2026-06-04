@@ -45,16 +45,21 @@ class SshTunnelService(private val context: Context) {
 
     private var proc: Process? = null
     private var stderrLog: File = File(context.filesDir, "logs/ssh-tunnel-stderr.log")
-    private val defaultLocalPort = 8642
-    private val defaultRemotePort = 8642
 
     data class Config(
         val host: String,
         val port: Int = 22,
         val username: String,
         val keyPath: String,
-        val remotePort: Int = defaultRemotePort,
-        val localPort: Int = defaultLocalPort,
+        // Defaults must reference companion-object constants, not
+        // instance fields — Kotlin primary-constructor default
+        // arguments are evaluated BEFORE the instance is
+        // constructed, so an instance field reference would be
+        // unresolved. (The 15th smoke run failed at
+        // 'Unresolved reference: defaultRemotePort / defaultLocalPort'
+        // for exactly this reason.)
+        val remotePort: Int = DEFAULT_REMOTE_PORT,
+        val localPort: Int = DEFAULT_LOCAL_PORT,
     )
 
     /**
@@ -169,5 +174,7 @@ class SshTunnelService(private val context: Context) {
 
     companion object {
         private const val TAG = "SshTunnelService"
+        const val DEFAULT_REMOTE_PORT = 8642
+        const val DEFAULT_LOCAL_PORT = 8642
     }
 }

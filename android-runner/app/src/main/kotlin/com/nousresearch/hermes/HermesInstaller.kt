@@ -80,6 +80,12 @@ class HermesInstaller(private val context: Context) {
         get() = when (currentBackend()) {
             Backend.TERMUX -> File("/data/data/${TermuxProbe.TERMUX_PACKAGE}/files/home/.hermes")
             Backend.BUNDLED -> File(context.filesDir, "home/.hermes")
+            // NONE: no backend available (neither Termux nor
+            // bundled-Python). Return a sentinel path; the caller
+            // (runStages) checks the backend and emits a
+            // 'no_python_backend' error before ever reading
+            // hermesHome, so this path is never used in practice.
+            Backend.NONE -> File(context.filesDir, "home/.hermes-disabled")
         }
 
     val hermesRepo: File get() = File(hermesHome, "hermes-agent")
