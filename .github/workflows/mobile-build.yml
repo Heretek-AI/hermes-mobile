@@ -210,7 +210,23 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: hermes
         run: |
-          if [[ -n "$KEYSTORE_FILE_B64" ]]; then
+          # Use assembleRelease only for tag builds, where the
+          # keystore setup steps (Decode + Generate keystore.properties)
+          # actually run. For workflow_dispatch / schedule smoke
+          # builds, those steps are skipped (gated on tag) and the
+          # F-Droid step writes an empty keystore.properties — which
+          # makes the release signingConfig incomplete and fails
+          # PackageAndroidArtifact with 'SigningConfig "release" is
+          # missing required property "storeFile"'. assembleDebug
+          # doesn't need a signingConfig and produces the same APK
+          # shape (debug-built) for the smoke build to upload.
+          #
+          # The 19th smoke run (#26930285356) reached 491 tasks
+          # executed before failing on this; everything after Kotlin
+          # compile (signing, manifest merge, resource link, AAB
+          # build, dex, package) was all green — we just need
+          # a working signing config to finish the pipeline.
+          if [[ "$GITHUB_REF" == refs/tags/mobile-v* ]]; then
             ./gradlew assembleRelease
           else
             ./gradlew assembleDebug

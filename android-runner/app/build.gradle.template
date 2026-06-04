@@ -150,6 +150,15 @@ android {
 }
 
 dependencies {
+    // BridgeActivity (com.getcapacitor.BridgeActivity) extends
+    // androidx.appcompat.app.AppCompatActivity, so the
+    // androidx.appcompat:appcompat class must be on the module
+    // classpath even though no HermesAPIPlugin code references it
+    // directly. Without this dep the kotlin compiler emits
+    //   'Cannot access class androidx.appcompat.app.AppCompatActivity'
+    // at compileReleaseKotlin. Version 1.7.0 is the LTS line that
+    // pairs with compileSdk 36 + AndroidX core 1.17.
+    implementation "androidx.appcompat:appcompat:1.7.0"
     implementation "androidx.core:core-ktx:1.13.1"
     implementation "androidx.lifecycle:lifecycle-service:2.8.7"
     implementation "com.google.dagger:hilt-android:2.51.1"

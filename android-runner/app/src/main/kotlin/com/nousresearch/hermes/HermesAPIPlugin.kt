@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * HermesAPIPlugin — the Capacitor bridge that exposes the 188-method
@@ -56,8 +57,12 @@ class HermesAPIPlugin : Plugin() {
         scope.launch {
             installer.progressStream.collect { stage ->
                 val data = JSObject()
-                data.put("step", stage.step)
-                data.put("totalSteps", stage.totalSteps)
+                // Capacitor 8's JSObject.put has overloads for
+                // Boolean/Double/String/Any; Int and Long values
+                // are ambiguous between Double and Any. Explicit
+                // .toDouble() resolves to the numeric overload.
+                data.put("step", stage.step.toDouble())
+                data.put("totalSteps", stage.totalSteps.toDouble())
                 data.put("title", stage.title)
                 data.put("detail", stage.detail)
                 data.put("log", stage.log)
@@ -70,11 +75,11 @@ class HermesAPIPlugin : Plugin() {
             supervisor.stateEvents.collect { state ->
                 val data = JSObject()
                 data.put("running", state.running)
-                data.put("port", state.port)
-                if (state.pid != null) data.put("pid", state.pid) else data.put("pid", JSONObject.NULL)
+                data.put("port", state.port.toDouble())
+                if (state.pid != null) data.put("pid", state.pid.toDouble()) else data.put("pid", JSONObject.NULL)
                 if (state.lastError != null) data.put("lastError", state.lastError) else data.put("lastError", JSONObject.NULL)
-                data.put("uptime", state.uptime)
-                if (state.backoffSec > 0) data.put("backoffSec", state.backoffSec)
+                data.put("uptime", state.uptime.toDouble())
+                if (state.backoffSec > 0) data.put("backoffSec", state.backoffSec.toDouble())
                 notifyListeners("onGatewayStateChange", data)
             }
         }
@@ -89,7 +94,7 @@ class HermesAPIPlugin : Plugin() {
         val ret = JSObject()
         ret.put("platform", "android")
         ret.put("version", Build.VERSION.RELEASE)
-        ret.put("sdkInt", Build.VERSION.SDK_INT)
+        ret.put("sdkInt", Build.VERSION.SDK_INT.toDouble())
         call.resolve(ret)
     }
 
@@ -110,7 +115,11 @@ class HermesAPIPlugin : Plugin() {
     @PluginMethod
     fun quitApp(call: PluginCall) {
         call.resolve()
-        context.finish()
+        // `context` is a Context, not an Activity — it has no
+        // finish(). The plugin's host activity is exposed via
+        // the `activity` field on Plugin. (15th smoke run
+        // failed at this line with 'Unresolved reference: finish'.)
+        activity.finish()
     }
 
     @PluginMethod
@@ -143,14 +152,14 @@ class HermesAPIPlugin : Plugin() {
         ret.put("mode", mode)
         ret.put("remoteUrl", remoteUrl)
         ret.put("hasApiKey", apiKey.isNotEmpty())
-        ret.put("apiKeyLength", apiKey.length)
+        ret.put("apiKeyLength", apiKey.length.toDouble())
         val ssh = JSObject()
         ssh.put("host", "")
-        ssh.put("port", 22)
+        ssh.put("port", 22.0)
         ssh.put("username", "")
         ssh.put("keyPath", "")
-        ssh.put("remotePort", 8642)
-        ssh.put("localPort", 8642)
+        ssh.put("remotePort", 8642.0)
+        ssh.put("localPort", 8642.0)
         ret.put("ssh", ssh)
         call.resolve(ret)
     }
@@ -258,7 +267,10 @@ class HermesAPIPlugin : Plugin() {
     @PluginMethod
     fun oauthLogin(call: PluginCall) {
         val provider = call.getString("provider") ?: return call.reject("provider is required")
-        val profile = call.getString("profile", "default")
+        // Capacitor 8's PluginCall.getString(key, default) returns
+        // String? (was String in older versions). Coalesce to the
+        // default explicitly.
+        val profile = call.getString("profile", "default") ?: "default"
         val authUrl = buildOAuthUrl(provider, profile)
         if (authUrl == null) {
             call.reject("unknown provider: $provider")
@@ -340,7 +352,11 @@ class HermesAPIPlugin : Plugin() {
 
     @PluginMethod
     fun onInstallProgress(call: PluginCall) {
-        call.setKeepCallbackAlive(true)
+        // In Capacitor 4+, the call stays alive as long as the
+        // plugin holds a reference to it (call.resolve() is never
+        // called). The old setKeepCallbackAlive(true) method was
+        // removed; the reference held by `installProgressCall`
+        // below is the modern equivalent.
         installProgressCall = call
     }
 
@@ -383,7 +399,10 @@ class HermesAPIPlugin : Plugin() {
 
     @PluginMethod
     fun onGatewayStateChange(call: PluginCall) {
-        call.setKeepCallbackAlive(true)
+        // See onInstallProgress — setKeepCallbackAlive was
+        // removed in Capacitor 4; the plugin's reference is
+        // what keeps the call alive for the lifetime of the
+        // notifyListeners() stream.
         gatewayStateCall = call
     }
 
@@ -439,10 +458,12 @@ class HermesAPIPlugin : Plugin() {
     @PluginMethod
     fun testSshConnection(call: PluginCall) {
         val host = call.getString("host") ?: return call.reject("host is required")
-        val port = call.getInt("port", 22)
+        // Capacitor 8's PluginCall.getInt(key, default) returns
+        // Int? (was Int in older versions). Coalesce explicitly.
+        val port = call.getInt("port", 22) ?: 22
         val username = call.getString("username") ?: return call.reject("username is required")
         val keyPath = call.getString("keyPath") ?: return call.reject("keyPath is required")
-        val remotePort = call.getInt("remotePort", 8642)
+        val remotePort = call.getInt("remotePort", 8642) ?: 8642
         // Spin a throwaway ssh -T tunnel that just verifies the
         // connection; kill it after 5s. We don't actually care
         // about the remote command output.
@@ -467,11 +488,11 @@ class HermesAPIPlugin : Plugin() {
     @PluginMethod
     fun setSshConfig(call: PluginCall) {
         val host = call.getString("host") ?: ""
-        val port = call.getInt("port", 22)
+        val port = call.getInt("port", 22) ?: 22
         val username = call.getString("username") ?: ""
         val keyPath = call.getString("keyPath") ?: ""
-        val remotePort = call.getInt("remotePort", 8642)
-        val localPort = call.getInt("localPort", 8642)
+        val remotePort = call.getInt("remotePort", 8642) ?: 8642
+        val localPort = call.getInt("localPort", 8642) ?: 8642
         val prefs = context.getSharedPreferences("hermes_ssh", android.content.Context.MODE_PRIVATE)
         prefs.edit()
             .putString("host", host)
@@ -611,7 +632,7 @@ class HermesAPIPlugin : Plugin() {
     fun stopVoiceCapture(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("id is required")
         val base64 = call.getString("base64") ?: return call.reject("base64 is required")
-        val mimeType = call.getString("mimeType", "audio/webm")
+        val mimeType = call.getString("mimeType", "audio/webm") ?: "audio/webm"
         scope.launch {
             try {
                 val dir = File(context.cacheDir, "voice").apply { mkdirs() }
@@ -758,6 +779,12 @@ class HermesAPIPlugin : Plugin() {
             }
         }
     }
+
+    // setKeepCallbackAlive was removed in Capacitor 4; the
+    // pattern is now to simply hold a strong reference to the
+    // call object (see onInstallProgress / onGatewayStateChange).
+    // We don't need a no-op shim — the fields installProgressCall
+    // and gatewayStateCall above are the references.
 
     override fun handleOnDestroy() {
         installer.dispose()
