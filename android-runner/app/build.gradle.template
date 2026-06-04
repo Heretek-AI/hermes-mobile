@@ -12,7 +12,31 @@
 //   - bundle config: Play Store AAB is set up but not used in v1
 //     (we ship via GitHub Releases + F-Droid, not Play Store).
 
+// android-runner/ carries the HermesAPIPlugin.kt + 11 other
+// Kotlin source files into the generated Capacitor project. The
+// template therefore needs the kotlin-android plugin; the
+// 13th smoke run (#26929018904) failed at
+// ':app:compileReleaseJavaWithJavac' with
+//   'import com.nousresearch.hermes.HermesAPIPlugin; cannot
+//    find symbol' — the .kt files weren't being compiled
+// because the plugin wasn't applied. (The cap add scaffold's
+// default build.gradle has it; this template overwrote that
+// and silently dropped it.)
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Hilt 2.51.1 in deps below requires Kotlin 1.9.x. AGP
+        // 8.7 (the cap scaffold's gradle wrapper) is happy with
+        // 1.9.24. Bump in lockstep with Hilt if you bump Hilt.
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24'
+    }
+}
+
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 // apply plugin: 'com.android.bundle'  // Phase 6: for Play Store AAB (v2, not v1)
 // apply plugin: 'io.sentry.android.gradle'  // Phase 6 opt-in
 
