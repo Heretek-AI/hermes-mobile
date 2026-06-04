@@ -6,6 +6,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { I18nProvider } from "@hermes/renderer";
 import { MobileApp } from "./mobile/MobileApp";
 import "./mobile/styles.css";
 
@@ -18,6 +19,8 @@ installMobileBridge();
 const root = createRoot(document.getElementById("root")!);
 root.render(
   <StrictMode>
-    <MobileApp />
+    <I18nProvider>
+      <MobileApp />
+    </I18nProvider>
   </StrictMode>,
 );

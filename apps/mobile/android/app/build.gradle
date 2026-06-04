@@ -48,6 +48,10 @@ buildscript {
         // "Plugin with id 'org.jetbrains.kotlin.plugin.compose'
         // not found."
         classpath 'org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.2.20'
+        // Phase 2: KSP for Room's annotation processor. Room
+        // 2.6.1+ supports KSP; using kapt with Kotlin 2.x emits
+        // metadata-version warnings and is being phased out.
+        classpath 'com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:2.2.20-2.0.4'
     }
 }
 
@@ -59,6 +63,10 @@ apply plugin: 'kotlin-android'
 // Compose runtime libraries (BOM + ui + material3) are pulled in
 // via the dependencies block below.
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+// Phase 2: KSP for Room. The Room compiler reads @Entity /
+// @Dao / @Database annotations and emits the generated
+// implementation classes at compile time.
+apply plugin: 'com.google.devtools.ksp'
 // apply plugin: 'com.android.bundle'  // Phase 6: for Play Store AAB (v2, not v1)
 // apply plugin: 'io.sentry.android.gradle'  // Phase 6 opt-in
 
@@ -192,7 +200,11 @@ dependencies {
     // Bumped from 2.51.1 → 2.52 to support Kotlin 2.x compiler.
     implementation "com.google.dagger:hilt-android:2.52"
     implementation "androidx.work:work-runtime-ktx:2.9.1"
-    implementation project(':capacitor-android')
+    // Phase 5: Capacitor is gone. The WebView is no longer
+    // instantiated — the Compose tree replaces it. The
+    // HermesAPIPlugin.kt bridge is also deleted (Phase 5
+    // follows the same one-way-door as dropping the React
+    // bundle: the Phase A native UI is the only client).
 
     // Phase A: Jetpack Compose stack. The BOM pins every compose-*
     // artifact to a single tested-together version. Picked 2024.12.01
@@ -213,6 +225,29 @@ dependencies {
     // navigation-compose for the 5-tab bottom nav (Phase A: Chat
     // is functional; Sessions/Skills/Memory/Settings are placeholders).
     implementation "androidx.navigation:navigation-compose:2.8.4"
+    // Phase 2: Room for the local chat messages DB. Bumped to
+    // 2.7.0-alpha10 because 2.6.1 + KSP 2.0.4 + Kotlin 2.2.0 has
+    // a known bug where the generated _Impl.java has
+    // `insert(MessageEntity, Continuation<Long>)` (no wildcard)
+    // while Kotlin's suspend fun compiles to
+    // `insert(MessageEntity, Continuation<? super Long>)`. The
+    // name-clash errors fail the build. 2.7.0 fixed this.
+    implementation "androidx.room:room-runtime:2.7.0-alpha10"
+    implementation "androidx.room:room-ktx:2.7.0-alpha10"
+    ksp "androidx.room:room-compiler:2.7.0-alpha10"
+    // Phase 2: OkHttp for the SSE chat stream. The plan said
+    // this is transitive of lifecycle-service:2.8.7, but the
+    // resolved dep tree didn't include it (lifecycle-service
+    // only needs WorkManager, not OkHttp). Add explicitly.
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    // Phase 4: Markwon for markdown rendering in chat message
+    // rows. The desktop uses react-markdown + remark-gfm +
+    // highlight.js; Markwon is the de-facto Kotlin equivalent.
+    // ~500KB to APK but covers the same feature set.
+    implementation "io.noties.markwon:core:4.6.2"
+    implementation "io.noties.markwon:ext-tables:4.6.2"
+    implementation "io.noties.markwon:ext-strikethrough:4.6.2"
+    implementation "io.noties.markwon:linkify:4.6.2"
     debugImplementation "androidx.compose.ui:ui-tooling"
     debugImplementation "androidx.compose.ui:ui-test-manifest"
 }
@@ -228,8 +263,10 @@ dependencies {
 // compiled into the APK. This `apply from` re-enables the autolink
 // (see Tier 3 of /tmp/hermes-smoke/PARITY.md for the full IPC
 // surface analysis).
-apply from: 'capacitor.build.gradle'
-
+// Phase 5: Capacitor autolink removed. The WebView is gone,
+// the HermesAPIPlugin is deleted, and the React bundle is
+// removed from assets/public. The 14 autolinked plugin
+// projects are no longer needed.
 // Force the Kotlin stdlib to match the kotlin-gradle-plugin version
 // (2.2.20). Without this, transitive Capacitor plugin deps can
 // resolve to a different stdlib and break the compile classpath

@@ -3,3 +3,4 @@
 // a MobileShell. The vendored renderer is otherwise untouched.
 
 export { default as DesktopApp } from "./App";
+export { I18nProvider } from "./components/I18nProvider";

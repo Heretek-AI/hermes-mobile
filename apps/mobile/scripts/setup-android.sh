@@ -64,14 +64,32 @@ if [[ -f "$MANIFEST" && -f "$RUNNER_MANIFEST" ]]; then
   done < <(grep -E '<uses-permission[^/]*android:name=' "$RUNNER_MANIFEST")
 fi
 
-# 4. Register HermesAPIPlugin in MainActivity. The generated file
-#    extends BridgeActivity; we add a registerPlugin call.
+# 4. Register HermesAPIPlugin in MainActivity. The cap scaffold's
+#    default MainActivity is just `public class MainActivity extends
+#    BridgeActivity {}` — no onCreate override. The original script
+#    tried to sed-insert `registerPlugin(HermesAPIPlugin.class);`
+#    after `super.onCreate(savedInstanceState);`, but that line
+#    doesn't exist in the empty scaffold, so nothing was inserted
+#    and the plugin was never registered at runtime. We now:
+#      (a) check whether the registration call is already present,
+#          using the call itself as the idempotency key (the class
+#          name alone collides with the import on the next step);
+#      (b) if there's an existing onCreate, insert the call after
+#          super.onCreate;
+#      (c) if there's no onCreate (the cap default), replace the
+#          class body with a proper onCreate that calls
+#          registerPlugin BEFORE super.onCreate.
 MAIN_ACTIVITY=$(find "$ANDROID/app/src/main/java" -name "MainActivity.java" 2>/dev/null | head -1)
 if [[ -n "$MAIN_ACTIVITY" ]]; then
-  if ! grep -q "HermesAPIPlugin" "$MAIN_ACTIVITY"; then
-    # Find the onCreate method and insert registerPlugin(PluginCall) calls
-    # after super.onCreate().
-    sed -i '/super.onCreate(savedInstanceState);/a\        registerPlugin(HermesAPIPlugin.class);' "$MAIN_ACTIVITY"
+  if ! grep -q "registerPlugin(HermesAPIPlugin.class)" "$MAIN_ACTIVITY"; then
+    if grep -q "super.onCreate(savedInstanceState);" "$MAIN_ACTIVITY"; then
+      sed -i '/super.onCreate(savedInstanceState);/a\        registerPlugin(HermesAPIPlugin.class);' "$MAIN_ACTIVITY"
+    else
+      # Replace the empty class body with a complete onCreate. The
+      # class declaration line is preserved; the `{}` body is
+      # expanded to include the override.
+      sed -i 's|public class MainActivity extends BridgeActivity {}|public class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        // Register custom plugins BEFORE super.onCreate so the\n        // bridge picks them up during initialization.\n        registerPlugin(HermesAPIPlugin.class);\n        super.onCreate(savedInstanceState);\n    }\n}|' "$MAIN_ACTIVITY"
+    fi
   fi
 fi
 
