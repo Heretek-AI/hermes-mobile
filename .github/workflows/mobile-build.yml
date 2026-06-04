@@ -125,13 +125,20 @@ jobs:
             https://github.com/fathah/hermes-desktop.git /tmp/hermes-desktop
           git -C /tmp/hermes-desktop checkout "$SHA"
 
-      - name: Vendor desktop renderer
-        env:
-          # Point the vendor script at the clone we just made; falls
-          # back to review/hermes-desktop/ for local devs (no env var).
-          HERMES_DESKTOP_SRC: /tmp/hermes-desktop/src/renderer/src
-          HERMES_DESKTOP_SHARED_SRC: /tmp/hermes-desktop/src/shared
-        run: bash apps/mobile/scripts/vendor-renderer.sh
+      - name: Sync android-runner to apps/mobile/android
+        # Per groovy-fluttering-island.md Phase 0c: android-runner/ is
+        # the canonical source of truth for the Hermes Kotlin sources.
+        # The setup-android.sh script rsyncs the entire runner tree
+        # (including HermesApi.kt, MainActivity.kt, the Compose UI, and
+        # the chat/db/memory packages) into apps/mobile/android/. The
+        # WebView+Capacitor+vendored-renderer era is over.
+        run: bash apps/mobile/scripts/setup-android.sh
+
+      - name: Verify Kotlin drift guard
+        # CI fails the build if android-runner/ and apps/mobile/android/
+        # diverge. The drift check is run AFTER setup-android.sh so it
+        # reports "in sync" rather than reporting the unfixed drift.
+        run: bash script/check-kotlin-drift.sh
 
       - name: Decode keystore from base64 secret
         if: startsWith(github.ref, 'refs/tags/mobile-v')

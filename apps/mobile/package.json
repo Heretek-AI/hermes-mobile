@@ -2,46 +2,12 @@
   "name": "@hermes-mobile/app",
   "version": "0.1.0",
   "private": true,
-  "description": "Capacitor shell for the Hermes Agent Android app. Mounts the vendored desktop renderer with the @hermes/ipc bridge.",
-  "type": "module",
+  "description": "Hermes Agent Android app. The Android project is at apps/mobile/android/; the Kotlin sources are canonicalised from android-runner/ via apps/mobile/scripts/setup-android.sh.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "cap:sync": "cap sync android",
-    "cap:open": "cap open android",
     "android:assemble:debug": "cd android && ./gradlew assembleDebug",
-    "android:install:debug": "cd android && ./gradlew installDebug"
-  },
-  "dependencies": {
-    "@aparajita/capacitor-biometric-auth": "^10.0.0",
-    "@capacitor/android": "^8.4.0",
-    "@capacitor/app": "^8.1.0",
-    "@capacitor/clipboard": "^8.0.1",
-    "@capacitor/core": "^8.4.0",
-    "@capacitor/dialog": "^8.0.1",
-    "@capacitor/filesystem": "^8.1.2",
-    "@capacitor/haptics": "^8.0.2",
-    "@capacitor/keyboard": "^8.0.3",
-    "@capacitor/network": "^8.0.1",
-    "@capacitor/preferences": "^8.0.1",
-    "@capacitor/share": "^8.0.1",
-    "@capacitor/splash-screen": "^8.0.1",
-    "@capacitor/status-bar": "^8.0.2",
-    "@capacitor-community/keep-awake": "^8.0.1",
-    "@capawesome/capacitor-file-picker": "^8.0.2",
-    "@hermes/ipc": "workspace:*",
-    "@hermes/renderer": "workspace:*",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.4.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.0.4",
-    "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "android:install:debug": "cd android && ./gradlew installDebug",
+    "android:assemble:release": "cd android && ./gradlew assembleRelease",
+    "android:drift:check": "bash ../../script/check-kotlin-drift.sh",
+    "android:sync": "bash scripts/setup-android.sh"
   }
 }
