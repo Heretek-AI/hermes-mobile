@@ -162,6 +162,66 @@ class GatewayClient(
         activeCall = null
     }
 
+    /**
+     * Non-streaming HTTP request helper for the Phase 1.2
+     * gateway-backed methods (transcribe, api-server-key,
+     * backup/import/dump, discover provider models, cron trigger,
+     * etc.). Returns the response body as a plain String, or
+     * throws on network failure / non-2xx HTTP status.
+     */
+    suspend fun request(
+        method: String,
+        path: String,
+        body: Map<String, Any?> = emptyMap(),
+    ): String = suspendCancellableCoroutine { cont ->
+        val payload = if (method == "GET" || body.isEmpty()) ""
+        else JSONObject(body).toString()
+        val builder = Request.Builder()
+            .url("$baseUrl$path")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Accept", "application/json")
+        val req = when (method.uppercase()) {
+            "GET" -> builder.get().build()
+            "POST" -> builder.post(payload.toRequestBody("application/json".toMediaType())).build()
+            "PUT" -> builder.put(payload.toRequestBody("application/json".toMediaType())).build()
+            "DELETE" -> builder.delete().build()
+            else -> builder.post(payload.toRequestBody("application/json".toMediaType())).build()
+        }
+        val call = client.newCall(req)
+        cont.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(c: Call, e: IOException) {
+                if (call.isCanceled()) cont.resumeWithException(IOException("request cancelled"))
+                else cont.resumeWithException(e)
+            }
+            override fun onResponse(c: Call, response: Response) {
+                response.use { r ->
+                    val text = r.body?.string() ?: ""
+                    if (!r.isSuccessful) {
+                        cont.resumeWithException(
+                            IOException("HTTP ${r.code}: ${text.take(200)}"),
+                        )
+                    } else {
+                        cont.resume(text)
+                    }
+                }
+            }
+        })
+    }
+
+    /**
+     * Same as [request] but parses the response as a JSON object.
+     * Returns an empty JSONObject on parse failure.
+     */
+    suspend fun requestJson(
+        method: String,
+        path: String,
+        body: Map<String, Any?> = emptyMap(),
+    ): JSONObject {
+        val text = request(method, path, body)
+        return try { JSONObject(text) } catch (_: Exception) { JSONObject() }
+    }
+
     private fun parseSseStream(source: BufferedSource, onEvent: (SseEvent) -> Unit) {
         // SSE wire format: blank-line-delimited records. Each
         // record is a sequence of `field: value` lines followed

@@ -18,13 +18,15 @@ import com.nousresearch.hermes.chat.MessageEntity
  * open it without arguments.
  */
 @Database(
-    entities = [MessageEntity::class],
-    version = 1,
+    entities = [MessageEntity::class, CronJobEntity::class],
+    version = 2,
     exportSchema = false,
 )
 abstract class HermesDatabase : RoomDatabase() {
 
     abstract fun messageDao(): MessageDao
+
+    abstract fun cronJobDao(): CronJobDao
 
     companion object {
         const val DB_NAME = "hermes.db"
@@ -43,9 +45,12 @@ abstract class HermesDatabase : RoomDatabase() {
                 HermesDatabase::class.java,
                 DB_NAME,
             )
-                // Phase A: no migrations — first version. The plan
-                // adds destructiveMigration() in Phase D when the
-                // schema gets a v2.
+                // Phase 1.1: destructive migration from v1 (messages
+                // only) to v2 (messages + cron_jobs). Chat history is
+                // recoverable from the gateway (we re-fetch on
+                // reconnect); the local cron job list is small and
+                // loss-tolerant in v1.
+                .fallbackToDestructiveMigration()
                 .build()
     }
 }
