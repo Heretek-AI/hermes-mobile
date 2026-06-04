@@ -81,8 +81,79 @@ native plugin (via `@PluginMethod` Kotlin) implement the same 188-method surface
 | 2 | Local-mode installer: `HermesInstaller` runs the 8 install stages in Termux or bundled Python | ✅ done |
 | 3 | Foreground service: gateway runs as Android 14+ `specialUse` FGS, supervisor restarts on crash | ✅ done |
 | 4 | Chat polish: highlight.js swap (1.6MB savings), voice capture, file picker, IME composition | ✅ done |
-| 5 | Full 20-screen parity: per-screen mobile layouts, kanban mobile, SSH tunnel | not started |
+| 5 | Full 20-screen parity: per-screen mobile layouts, kanban mobile, SSH tunnel, OAuth login | ✅ done |
 | 6 | Distribution: signed APK, F-Droid metadata, GitHub Actions | not started |
+
+## Phase 5 — full 20-screen parity
+
+The renderer has 20 screens (Agents, Chat, Discover, Gateway, Install, Kanban, Layout, Memory, Models, Office, Providers, Schedules, Sessions, Settings, Setup, Skills, Soul, SplashScreen, Tools, Welcome). Phase 5 brings the viewport-dependent ones to < 640dp without rewriting them wholesale.
+
+### Per-screen mapping (plan §E.2)
+
+| Screen | Desktop | Mobile (Phase 5) |
+|---|---|---|
+| Chat | sidebar chat | composer pinned to bottom with safe-area; IME handled (isComposing); existing |
+| Sessions | table with FTS5 search | `< 640dp`: thead hidden, rows → stacked cards via `.sessions-table tbody tr` |
+| Kanban | 6-column grid (220px each) | `< 640dp`: grid-template-columns: 1fr, columns stack vertically |
+| Layout | 200px left sidebar | `< 640dp`: sidebar hidden; MobileShell's bottom-nav takes over via a CustomEvent bridge |
+| Memory / Models / Providers / Skills | multi-column grid | `< 640dp`: 1fr (full width) |
+| Schedules | grid | `< 640dp`: 1fr |
+| Office | Claw3D 3D viewer | `< 640dp`: 60vh height, full width |
+| Gateway | flex layout with start/stop | `< 640dp`: sticky action footer (above bottom-nav) |
+| Settings | cards | unchanged (already 1-column-friendly) |
+| Agents (Profile Switcher) | sidebar dropdown | `< 640dp`: bottom-sheet via `MobileDrawer` |
+| Welcome / Setup / Install / SplashScreen | mostly forms | unchanged (single-column, mobile-friendly) |
+| Soul / Tools / Discover | mostly forms | unchanged |
+| Schedule Cron jobs / Memory providers | mostly forms | unchanged |
+
+### Three pieces that make it work
+
+1. **Layout CustomEvent bridge** — `apps/mobile/scripts/renderer-patches/screens/Layout/Layout.tsx` adds a useEffect that listens for `hermes:mobile-go-to-view` events on `window`. The vendored Layout's `goTo(view)` validates the view against a whitelist (`chat`, `sessions`, `discover`, `agents`, `office`, `kanban`, `models`, `providers`, `skills`, `memory`, `tools`, `schedules`, `gateway`, `settings`) and switches the visible pane. The mobile shell dispatches the event on tab tap.
+
+2. **Mobile CSS overrides** — `apps/mobile/src/mobile/styles.css` contains a `@media (max-width: 640px)` block that overrides the vendored renderer's CSS. The mobile styles file is loaded AFTER the vendored main.css so specificity rules in our favor. Coverage: kanban columns stack, sessions table → cards, sidebar hides, all multi-column grids become 1-column, chat composer pins to bottom with safe-area padding, gateway actions become sticky, profile switcher becomes a bottom sheet.
+
+3. **MobileDrawer shim** — `apps/mobile/scripts/renderer-patches/components/MobileShell.tsx` exports a `MobileDrawer` component (CSS translateY slide-up from the bottom) that dialogs can opt into at < 640dp. The desktop's `headlessui` `Dialog` continues to work; the shim auto-selects via a `useResponsive` hook that returns `'mobile'` or `'desktop'` based on `window.innerWidth < 640`.
+
+### SshTunnelService.kt (Phase 5 native)
+
+A new Kotlin class that opens an SSH local-port-forward to a remote hermes-agent gateway. Mirrors the desktop's `src/main/ssh-remote.ts:startSshTunnel` but shells out to the system `ssh` binary (Termux or `/system/bin/ssh`) instead of using JSch. The IPC methods `startSshTunnel` / `stopSshTunnel` / `isSshTunnelActive` / `testSshConnection` / `setSshConfig` are wired into `HermesAPIPlugin` and persist the SSH config in `SharedPreferences("hermes_ssh")`.
+
+```bash
+# SshTunnelService probes these in order:
+/data/data/com.termux/files/usr/bin/ssh   # Termux (most common)
+/system/bin/ssh                            # rooted / CF-Auto-Root
+/system/xbin/ssh                           # some custom ROMs
+/vendor/bin/ssh                            # rare
+```
+
+The forward is `ssh -N -L <local>:127.0.0.1:<remote> -p <sshPort> -i <keyPath> <user>@<host>` with `StrictHostKeyChecking=accept-new`, `ServerAliveInterval=30`, `ExitOnForwardFailure=yes`. stderr is tee'd to `filesDir/logs/ssh-tunnel-stderr.log`.
+
+### OAuthBrowserActivity.kt (Phase 5 native)
+
+A minimal in-app browser flow for OAuth login. Replaces the desktop's `src/main/oauth-login.ts` system-browser hand-off with an Android Activity that:
+
+1. Generates a CSRF state token (SecureRandom 16 bytes hex).
+2. Stashes the state in `SharedPreferences("hermes_oauth")`.
+3. Opens the provider's auth URL in a system browser via `Intent.ACTION_VIEW`.
+4. The provider's `hermes://oauth-callback?code=...&state=...` redirect re-enters the app via the manifest's deep-link filter.
+5. `handleRedirect()` validates the state, writes the code to `auth.json`, finishes.
+
+Phase 5 v1 supports `openai`, `anthropic`, and `github` providers with stub `client_id` values. Real OAuth integration requires per-provider client IDs (Phase 6).
+
+## Verification (Phase 5)
+
+```bash
+pnpm -r typecheck                                  # ✅ all 3 packages clean
+pnpm --filter @hermes-mobile/app build             # ✅ vite build → apps/mobile/dist/
+grep -c "hermes:mobile-go-to-view" packages/renderer/src/screens/Layout/Layout.tsx  # 3 (event listener)
+ls android-runner/.../com/nousresearch/hermes/     # 12 Kotlin files (~2700 LOC)
+```
+
+On-device:
+- Open Settings → connection mode → SSH; enter host/user/keyPath; the tunnel opens and the local 8642 port binds.
+- Tap the bottom-nav tabs; the Layout switches panes (no router, just internal state).
+- Open Kanban; columns stack vertically at < 640dp.
+- Open Sessions; the table becomes a list of cards at < 640dp.
 
 ## Quick start
 
