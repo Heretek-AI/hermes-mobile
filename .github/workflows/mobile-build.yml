@@ -128,6 +128,8 @@ jobs:
 
       - name: Decode keystore from base64 secret
         if: startsWith(github.ref, 'refs/tags/mobile-v')
+        env:
+          KEYSTORE_FILE_B64: ${{ secrets.KEYSTORE_FILE_B64 }}
         run: |
           if [[ -n "$KEYSTORE_FILE_B64" ]]; then
             echo "$KEYSTORE_FILE_B64" | base64 -d > /tmp/release.jks
@@ -136,13 +138,34 @@ jobs:
 
       - name: Generate keystore.properties for release
         if: startsWith(github.ref, 'refs/tags/mobile-v')
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          # v0.1.0 fix: the env block was previously only on
+          # the assembleRelease step, so $KEYSTORE_PASSWORD /
+          # $KEY_PASSWORD were empty here and the resulting
+          # keystore.properties had blank passwords. The new
+          # signing fail-fast in build.gradle then correctly
+          # failed the release build with a clear error —
+          # better than a silent unsigned APK. With this env
+          # block, the file is written with the real secrets
+          # and assembleRelease proceeds.
+          #
+          # Required repo secrets (Settings → Secrets and
+          # variables → Actions):
+          #   - KEYSTORE_FILE_B64 — base64 of keystore/release.jks
+          #   - KEYSTORE_PASSWORD — keystore store password
+          #   - KEY_PASSWORD — key password
+          # If any are missing, the build fails fast at the
+          # gradle signing step with a clear error.
           cat > keystore/keystore.properties <<EOF
           storeFile=/tmp/release.jks
           storePassword=$KEYSTORE_PASSWORD
           keyAlias=hermes
           keyPassword=$KEY_PASSWORD
           EOF
+          echo "wrote keystore.properties (size $(wc -c < keystore/keystore.properties) bytes)"
 
       - name: Generate F-Droid keystore.properties (no signing)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
