@@ -115,6 +115,24 @@ function Layout({
     window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
   }, [view]);
 
+  // Mobile shell bottom-nav: dispatch('hermes:mobile-go-to-view', { detail: viewName })
+  // from the mobile shell's bottom-nav tab tap. The Layout listens
+  // here and calls goTo() with the validated view. Whitelisted
+  // views match the desktop's NAV_ITEMS plus agents/settings.
+  useEffect(() => {
+    const valid: ReadonlySet<View> = new Set([
+      "chat", "sessions", "discover", "agents", "office",
+      "kanban", "models", "providers", "skills", "memory",
+      "tools", "schedules", "gateway", "settings",
+    ]);
+    const handler = (e: Event) => {
+      const view = (e as CustomEvent<string>).detail;
+      if (valid.has(view as View)) goTo(view as View);
+    };
+    window.addEventListener("hermes:mobile-go-to-view", handler);
+    return () => window.removeEventListener("hermes:mobile-go-to-view", handler);
+  }, [goTo]);
+
   // Restore the last-activated profile on launch. The main process persists it
   // in ~/.hermes/active_profile (via `hermes profile use`), so the desktop
   // should reopen on that profile rather than always resetting to "default".

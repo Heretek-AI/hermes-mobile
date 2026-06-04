@@ -702,6 +702,48 @@ class HermesAPIPlugin : Plugin() {
     }
 
     // ------------------------------------------------------------------
+    // Phase 6: crash reporting (Sentry opt-in)
+    // ------------------------------------------------------------------
+
+    /**
+     * Toggle Sentry crash reporting. Default off; the user
+     * explicitly opts in via Settings. When on, the Sentry Android
+     * SDK (declared in build.gradle) captures uncaught exceptions
+     * and forwards them to the configured DSN.
+     *
+     * The Sentry dep is *gated by build flavor* — F-Droid builds
+     * never include the SDK (see android-runner/app/build.gradle.template).
+     * This means the F-Droid APK has zero proprietary deps and the
+     * `setCrashReportingEnabled(true)` call is a no-op there.
+     */
+    @PluginMethod
+    fun setCrashReportingEnabled(call: PluginCall) {
+        val enabled = call.getBoolean("enabled") ?: false
+        val prefs = context.getSharedPreferences(
+            "hermes_sentry",
+            android.content.Context.MODE_PRIVATE,
+        )
+        prefs.edit().putBoolean("enabled", enabled).apply()
+        // The Sentry SDK is initialized on app startup if the
+        // dep is present at build time and the flag is on.
+        // Phase 6 v1: the SDK init is wired in MainActivity's
+        // onCreate when the flag flips on. The Kotlin call
+        // here just persists the preference; the JS side
+        // (trackEvent) reads it for analytics.
+        call.resolve(JSObject().put("value", true))
+    }
+
+    @PluginMethod
+    fun getCrashReportingEnabled(call: PluginCall) {
+        val prefs = context.getSharedPreferences(
+            "hermes_sentry",
+            android.content.Context.MODE_PRIVATE,
+        )
+        val enabled = prefs.getBoolean("enabled", false)
+        call.resolve(JSObject().put("value", enabled))
+    }
+
+    // ------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------
 
