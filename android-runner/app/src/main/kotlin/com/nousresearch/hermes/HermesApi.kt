@@ -250,6 +250,26 @@ class HermesApi(private val context: Context) {
         context.startActivity(intent)
     }
 
+    /**
+     * Workstream C: open this app's "App info" page in system Settings.
+     * Used by [com.nousresearch.hermes.ui.onboarding.InstallScreen]'s
+     * Termux-permission-needed guidance card so the user can land
+     * directly on the screen where `com.termux.permission.RUN_COMMAND`
+     * is granted (Settings → Apps → Hermes → Additional permissions).
+     *
+     * Mirrors the same intent shape [BatteryOptHelper.buildAppDetailsIntent]
+     * uses; we don't reuse that helper because it's named for a
+     * different use case and exposing two callers would be misleading.
+     */
+    fun openAppSettings() {
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            android.net.Uri.fromParts("package", context.packageName, null),
+        )
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
     data class SshConfigView(
         val host: String,
         val port: Int,
@@ -329,7 +349,7 @@ class HermesApi(private val context: Context) {
 
     fun adoptHermesHome(dir: String): Boolean = installer.adoptHermesHome(dir)
 
-    fun getHermesVersion(): String? = installer.getHermesVersion()
+    suspend fun getHermesVersion(): String? = installer.getHermesVersion()
 
     /**
      * Re-read the upstream hermes-agent version on demand. Used by the
@@ -339,7 +359,7 @@ class HermesApi(private val context: Context) {
      */
     suspend fun refreshHermesVersion(): String? = installer.refreshHermesVersion()
 
-    fun runHermesDoctor(): String {
+    suspend fun runHermesDoctor(): String {
         val r = installer.runHermesDoctor()
         return r.stdout + r.stderr
     }

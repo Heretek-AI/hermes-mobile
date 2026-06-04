@@ -35,6 +35,34 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <!--
+      Workstream C: Termux RUN_COMMAND IPC. We dispatch shell
+      commands into Termux's $PREFIX via RunCommandService and get
+      stdout/stderr/exit-code back via RUN_COMMAND_PENDING_INTENT
+      (requires Termux >= 0.109). The signature-level permission
+      must be requested here and granted by the user once in
+      Android Settings -> App info -> Additional permissions.
+    -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!--
+      Workstream C: package visibility on Android 11+ (API 30+).
+      Without this <queries> block, PackageManager.getPackageInfo
+      (used by TermuxProbe.isTermuxInstalled) throws
+      NameNotFoundException even when Termux is installed,
+      defeating the entire backend-selection logic in
+      HermesInstaller.currentBackend(). We declare visibility for
+      both the Termux package itself and the RUN_COMMAND intent
+      action (the latter is what we actually dispatch).
+    -->
+    <queries>
+        <package android:name="com.termux" />
+        <package android:name="com.termux.api" />
+        <intent>
+            <action android:name="com.termux.RUN_COMMAND" />
+        </intent>
+    </queries>
+
+    <!--
       Long-running AI gateway foreground service. The
       `foregroundServiceType="specialUse"` requires a justification
       property, declared inline below. Android 14+ (UPSIDE_DOWN_CAKE)

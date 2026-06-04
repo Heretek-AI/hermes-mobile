@@ -38,6 +38,27 @@ object TermuxProbe {
         return packageVersion(context, TERMUX_PACKAGE)
     }
 
+    /**
+     * Workstream C: Termux >= 0.109 is required for the
+     * `RUN_COMMAND_PENDING_INTENT` mechanism that `TermuxRunner.runAndWait`
+     * depends on (older Termux silently drops the extra and runs
+     * fire-and-forget, leaving our continuation hanging forever).
+     *
+     * Current F-Droid Termux is 0.119+, so this should always pass for
+     * users who installed via the Workstream A F-Droid deep-link.
+     * Side-loaders running ancient builds get a graceful diagnostic
+     * via [InstallScreen]'s permission-needed surface.
+     *
+     * Returns true if Termux is installed AND the parsed version is
+     * at or above the floor. Returns false if not installed, version
+     * unparseable, or below the floor.
+     */
+    fun isRunCommandResultSupported(context: Context): Boolean {
+        if (!isTermuxInstalled(context)) return false
+        val raw = termuxVersion(context) ?: return false
+        return isVersionAtLeast(raw, RUN_COMMAND_PENDING_INTENT_MIN_VERSION)
+    }
+
     /** Returns the absolute path Termux uses for its $PREFIX. */
     fun termuxHome(context: Context): String? {
         // Termux stores its root at /data/data/com.termux/files/ — we
@@ -68,4 +89,28 @@ object TermuxProbe {
             null
         }
     }
+
+    /**
+     * Parses a dotted version string (e.g. "0.119.1", "0.109") into a
+     * list of ints and compares lexicographically against `floor`.
+     * Tolerant of trailing non-numeric junk (e.g. "0.119.1-debug" →
+     * [0, 119, 1]) — the dash-suffix is dropped on parsing the last
+     * segment.
+     */
+    internal fun isVersionAtLeast(raw: String, floor: List<Int>): Boolean {
+        val actual = raw.split(".").map { seg ->
+            seg.takeWhile { it.isDigit() }.toIntOrNull() ?: return false
+        }
+        val len = maxOf(actual.size, floor.size)
+        for (i in 0 until len) {
+            val a = actual.getOrElse(i) { 0 }
+            val f = floor.getOrElse(i) { 0 }
+            if (a > f) return true
+            if (a < f) return false
+        }
+        return true   // exactly equal
+    }
+
+    /** Floor for `RUN_COMMAND_PENDING_INTENT` (Termux >= 0.109). */
+    private val RUN_COMMAND_PENDING_INTENT_MIN_VERSION = listOf(0, 109)
 }
