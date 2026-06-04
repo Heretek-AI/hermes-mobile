@@ -151,7 +151,7 @@ class SshTunnelService(private val context: Context) {
         val bundled = BundledPythonRunner(context)
         while (System.currentTimeMillis() < deadline) {
             if (!isActive()) return false
-            if (!bundled.tryReservePort(defaultLocalPort)) return true // port bound = ready
+            if (!bundled.tryReservePort(DEFAULT_LOCAL_PORT)) return true // port bound = ready
             try { TimeUnit.MILLISECONDS.sleep(200) } catch (_: InterruptedException) { return false }
         }
         return false
