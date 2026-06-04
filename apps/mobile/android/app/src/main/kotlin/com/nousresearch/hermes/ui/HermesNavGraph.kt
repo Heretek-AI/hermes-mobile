@@ -23,12 +23,25 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.nousresearch.hermes.HermesApi
+import com.nousresearch.hermes.ui.agents.AgentsScreen
 import com.nousresearch.hermes.ui.chat.ChatScreen
 import com.nousresearch.hermes.ui.components.TopBarWithBack
+import com.nousresearch.hermes.ui.discover.DiscoverScreen
+import com.nousresearch.hermes.ui.gateway.GatewayScreen
+import com.nousresearch.hermes.ui.kanban.KanbanScreen
 import com.nousresearch.hermes.ui.memory.MemoryScreen
+import com.nousresearch.hermes.ui.models.ModelsScreen
 import com.nousresearch.hermes.ui.more.MoreSheet
+import com.nousresearch.hermes.ui.office.OfficeScreen
+import com.nousresearch.hermes.ui.persona.PersonaScreen
 import com.nousresearch.hermes.ui.placeholder.PlaceholderScreen
+import com.nousresearch.hermes.ui.providers.ProvidersScreen
+import com.nousresearch.hermes.ui.schedules.SchedulesScreen
 import com.nousresearch.hermes.ui.sessions.SessionsScreen
+import com.nousresearch.hermes.ui.settings.SettingsScreen
+import com.nousresearch.hermes.ui.skills.SkillsScreen
+import com.nousresearch.hermes.ui.soul.SoulScreen
+import com.nousresearch.hermes.ui.tools.ToolsScreen
 
 /**
  * HermesNavGraph — Phase 3: 5 bottom-nav tabs + 12 overflow
@@ -114,19 +127,24 @@ fun HermesNavGraph(hermes: HermesApi) {
             // ── Bottom-nav destinations (5) ────────────────────
             composable(Destination.BottomTab.Chat.route) { ChatScreen(hermes) }
             composable(Destination.BottomTab.Sessions.route) { SessionsScreen(hermes) }
-            composable(Destination.BottomTab.Skills.route) {
-                PlaceholderScreen("Skills", "Manage installed and bundled skills")
-            }
+            composable(Destination.BottomTab.Skills.route) { SkillsScreen(hermes) }
             composable(Destination.BottomTab.Memory.route) { MemoryScreen(hermes) }
-            composable(Destination.BottomTab.Settings.route) {
-                PlaceholderScreen("Settings", "Configure the Hermes agent")
-            }
+            composable(Destination.BottomTab.Settings.route) { SettingsScreen(hermes) }
 
             // ── Overflow destinations (12) ────────────────────
-            Destination.MoreEntry.all.forEach { entry ->
-                composable(entry.route) {
-                    PlaceholderScreen(entry.label, "Coming in Phase 4")
-                }
+            composable(Destination.MoreEntry.Discover.route) { DiscoverScreen(hermes) }
+            composable(Destination.MoreEntry.Agents.route) { AgentsScreen(hermes) }
+            composable(Destination.MoreEntry.Office.route) { OfficeScreen(hermes) }
+            composable(Destination.MoreEntry.Kanban.route) { KanbanScreen(hermes) }
+            composable(Destination.MoreEntry.Models.route) { ModelsScreen(hermes) }
+            composable(Destination.MoreEntry.Providers.route) { ProvidersScreen(hermes) }
+            composable(Destination.MoreEntry.Tools.route) { ToolsScreen(hermes) }
+            composable(Destination.MoreEntry.Schedules.route) { SchedulesScreen(hermes) }
+            composable(Destination.MoreEntry.Gateway.route) { GatewayScreen(hermes) }
+            composable(Destination.MoreEntry.Soul.route) { SoulScreen(hermes) }
+            composable(Destination.MoreEntry.Persona.route) { PersonaScreen(hermes) }
+            composable(Destination.MoreEntry.Dashboard.route) {
+                PlaceholderScreen("Dashboard", "Overview (Phase 4.14)")
             }
         }
 
