@@ -102,6 +102,10 @@ if [[ -d "$PATCHES_DIR" ]]; then
   if [[ -d "$PATCHES_DIR" ]]; then
     while IFS= read -r -d '' f; do
       rel="${f#$PATCHES_DIR/}"
+      # rm -f first because some filesystems (notably overlayfs
+      # and btrfs with copy-on-write) silently no-op on cp -f when
+      # the source and dest are on the same backing store.
+      rm -f "$DST/$rel"
       cp -f "$f" "$DST/$rel"
       echo "applied renderer file: $rel"
     done < <(find "$PATCHES_DIR" -type f \( -name '*.tsx' -o -name '*.ts' \) -print0)
