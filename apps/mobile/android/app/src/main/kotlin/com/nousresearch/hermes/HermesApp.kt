@@ -11,22 +11,14 @@ import android.util.Log
  * `(application as HermesApp)` and picks up a `hermes: HermesApi`
  * field.
  *
- * Lifetime: created by the system before any Activity. The long-lived
- * state inside HermesApi (chat event SharedFlows, install supervisor,
- * SSH tunnel handle, gateway FGS client) does not need to be
- * re-created on rotation.
- *
- * Phase 1 wiring:
- *  1. Phase 0 registers this class in the manifest via
- *     `android:name=".HermesApp"`.
- *  2. Phase 1 adds `hermes = HermesApi(this)` here.
- *  3. HermesAPIPlugin's `load()` resolves `(application as HermesApp).hermes`
- *     and routes every IPC call to the singleton. The plugin stays
- *     around as a thin bridge for the WebView (which Phase 5 will
- *     remove).
- *  4. Phase 3's `MainActivity` does `setContent { HermesAppTheme {
- *     HermesNavGraph((application as HermesApp).hermes) } }` and
- *     the singleton is consumed by the Compose tree directly.
+ * Phase 7: opt-in Sentry crash reporting. The Sentry SDK is only
+ * initialised when the user has explicitly enabled crash reporting
+ * via Settings (see [HermesApi.setCrashReportingEnabled]); we
+ * avoid the network round-trip on cold start for users who haven't
+ * opted in. The DSN is read from a build-config field (set in
+ * the build.gradle's `defaultConfig.buildConfigField` line) — it
+ * is *not* hardcoded here so the open-source build doesn't ship
+ * the project DSN.
  */
 class HermesApp : Application() {
 
@@ -37,7 +29,40 @@ class HermesApp : Application() {
         super.onCreate()
         hermes = HermesApi(this)
         Log.i(TAG, "HermesApp.onCreate — HermesApi singleton initialised")
+        maybeInitSentry()
     }
+
+    private fun maybeInitSentry() {
+        if (!hermes.getCrashReportingEnabled()) return
+        val dsn = try {
+            // BuildConfig.SENTRY_DSN is set in build.gradle from
+            // an env var (or the gradle property file). We avoid
+            // the network call entirely if the user hasn't opted
+            // in. Phase 7.4 will wire the real Sentry SDK call.
+            @Suppress("UNUSED_VARIABLE")
+            val unused = "Sentry DSN: ${readDsn()}"
+            readDsn()
+        } catch (e: Exception) {
+            Log.w(TAG, "Sentry DSN unavailable; skipping init: ${e.message}")
+            return
+        }
+        if (dsn.isBlank()) {
+            Log.i(TAG, "Sentry DSN empty; crash reporting disabled")
+            return
+        }
+        Log.i(TAG, "Sentry would be initialised with DSN (v1 stub)")
+        // Phase 7.4 final:
+        //   SentryAndroid.init(this) { options ->
+        //     options.dsn = dsn
+        //     options.environment = if (BuildConfig.DEBUG) "debug" else "release"
+        //   }
+    }
+
+    private fun readDsn(): String = try {
+        val clazz = Class.forName("com.nousresearch.hermes.BuildConfig")
+        val field = clazz.getField("SENTRY_DSN")
+        field.get(null) as? String ?: ""
+    } catch (_: Exception) { "" }
 
     companion object {
         private const val TAG = "HermesApp"

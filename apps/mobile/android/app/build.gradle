@@ -104,6 +104,13 @@ android {
     // lifting; the gate is the buildFeatures.compose flag.
     buildFeatures {
         compose true
+        // Phase 7.4: Sentry DSN is exposed to HermesApp.maybeInitSentry
+        // via BuildConfig.SENTRY_DSN. The DSN comes from the
+        // SENTRY_DSN env var (CI sets it from a secret); the
+        // open-source build ships with an empty string so the
+        // crash-reporting toggle is a no-op for users who haven't
+        // built their own.
+        buildConfig = true
     }
     defaultConfig {
         applicationId 'com.nousresearch.hermes'
@@ -111,6 +118,10 @@ android {
         targetSdk 36
         versionCode 1
         versionName '0.1.0'
+        // Phase 7.4: BuildConfig field for the Sentry DSN. The
+        // CI sets SENTRY_DSN as a secret; the open-source build
+        // gets an empty string.
+        buildConfigField "String", "SENTRY_DSN", "\"${System.getenv('SENTRY_DSN') ?: ''}\""
     }
 
     // Phase 6: ABI splits per plan §G.2.
