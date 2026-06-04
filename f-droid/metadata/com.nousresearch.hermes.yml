@@ -25,9 +25,9 @@
 Caton: Internet
 AuthorName: Nous Research
 AuthorWebSite: https://nousresearch.com
-SourceCode: https://github.com/NousResearch/hermes-mobile
-IssueTracker: https://github.com/NousResearch/hermes-mobile/issues
-Translation: https://github.com/NousResearch/hermes-mobile/tree/main/packages/shared/locales
+SourceCode: https://github.com/Heretek-AI/hermes-mobile
+IssueTracker: https://github.com/Heretek-AI/hermes-mobile/issues
+Translation: https://github.com/Heretek-AI/hermes-mobile/tree/main/packages/shared/locales
 
 # F-Droid rebuilds from source with their own signing key. The
 # `AllowedNonFreeLibraries` list is checked against the APK's
@@ -55,7 +55,7 @@ Builds:
     build:
       - cd ..
       - ./gradlew assembleRelease
-    ndk: r26b
+    ndk: r27d
     gradle: 8.7
     # Reproducible-build settings — F-Droid checks these.
     scandelete: true

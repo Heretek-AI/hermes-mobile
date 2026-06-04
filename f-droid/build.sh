@@ -3,7 +3,7 @@
 # build server.
 #
 # The F-Droid server runs this in a clean container with a pinned
-# toolchain (NDK r26b, gradle 8.7, OpenJDK 17). The script must
+# toolchain (NDK r27d LTS, gradle 8.7, OpenJDK 17). The script must
 # produce a byte-identical APK across runs to satisfy F-Droid's
 # "Reproducible Builds" requirement.
 #

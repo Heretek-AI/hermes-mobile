@@ -68,7 +68,13 @@ jobs:
           # android-actions/setup-android@v3 takes a single `packages`
           # string of sdkmanager-style coordinates, not the v2
           # api-level/build-tools-version/ndk-version triplet.
-          packages: 'platforms;android-35 build-tools;35.0.0 ndk;r26b'
+          # NDK pinned to r27d (current LTS as of 2026-Q2). r26b is
+          # unsupported and no longer resolvable in sdkmanager —
+          # the workflow failed at the NDK step on the 2nd smoke
+          # run with 'Failed to find package ndk;r26b'. F-Droid
+          # metadata (f-droid/metadata/com.nousresearch.hermes.yml)
+          # uses the same LTS version for parity.
+          packages: 'platforms;android-35 build-tools;35.0.0 ndk;27.3.13750724'
 
       - name: Cache pnpm
         uses: actions/cache@v4
