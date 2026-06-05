@@ -16,4 +16,36 @@
         <string name="termux_permission_needed_title">Termux setup needed</string>
         <string name="termux_permission_needed_message">Hermes needs four things from your Termux install before the local install can run. Do these in order, then tap Retry:\n\n1. Install Termux and (recommended) Termux:API from F-Droid. Termux:API powers the battery / sensor / telephony features Hermes uses after install.\n\n2. Grant the “Run commands inside Termux environment” permission: tap Open App Settings → Additional permissions → enable it.\n\n3. In Termux, enable external apps: long-press the Termux screen → Properties → toggle “allow-external-apps” (or run `echo allow-external-apps=true >> ~/.termux/termux.properties` then `termux-reload-settings`).\n\n4. Return to Hermes and tap Retry.</string>
         <string name="termux_permission_open_settings">Open App Settings</string>
+        <string name="preflight_title">Termux setup</string>
+        <string name="preflight_subtitle">A few quick steps so Hermes can run inside Termux.</string>
+        <string name="preflight_step_label">Step %1$d of %2$d</string>
+        <string name="preflight_step1_title">Install Termux</string>
+        <string name="preflight_step1_body_installed">Termux %1$s detected. Tap Continue.</string>
+        <string name="preflight_step1_body_missing">Hermes runs inside Termux on Android. Install Termux from F-Droid (the only official source) and return here.</string>
+        <string name="preflight_step1_waiting">Waiting for Termux to appear…</string>
+        <string name="preflight_step1_timeout">Still not detected? Make sure the install finished and try again.</string>
+        <string name="preflight_step1_check_again">Check again</string>
+        <string name="preflight_action_continue">Continue</string>
+        <string name="preflight_step2_title">Grant permission</string>
+        <string name="preflight_step2_body">Hermes needs the “Run commands inside Termux environment” permission from Android. Tap Open App Settings → Additional permissions → enable it, then return here.</string>
+        <string name="preflight_step2_body_verified">Permission granted. Tap Continue.</string>
+        <string name="preflight_step3_title">Allow external apps</string>
+        <string name="preflight_step3_body_auto">Setting `allow-external-apps=true` in Termux…</string>
+        <string name="preflight_step3_caption">Command: writes `allow-external-apps=true` to `~/.termux/termux.properties` and reloads Termux settings.</string>
+        <string name="preflight_step3_error_title">Auto-set failed</string>
+        <string name="preflight_action_copy_command">Copy command</string>
+        <string name="preflight_action_copied">Copied</string>
+        <string name="preflight_action_i_did_it">I did it</string>
+        <string name="preflight_step4_title">Verifying…</string>
+        <string name="preflight_step4_body_verified">Verified: `allow-external-apps=true` is set in Termux.</string>
+        <string name="preflight_step4_error_title">Property not set</string>
+        <string name="preflight_step4_error_body">We couldn’t read `allow-external-apps=true` from `~/.termux/termux.properties`. Go back to step 3 and try again.</string>
+        <string name="preflight_action_back_to_step_3">Back to step 3</string>
+        <string name="preflight_step5_title">Install Hermes</string>
+        <string name="preflight_step5_body">Pick how to install Hermes inside Termux.</string>
+        <string name="preflight_action_run_in_app">Run Hermes installer</string>
+        <string name="preflight_action_run_one_liner">Use one-line installer</string>
+        <string name="preflight_action_why_both">Why both?</string>
+        <string name="preflight_why_both_body">The in-app installer shows progress and lets you retry failed stages. The one-line installer is the canonical desktop path and is useful if our installer hits an edge case we don’t cover.</string>
+        <string name="preflight_action_back">Back</string>
 </resources>

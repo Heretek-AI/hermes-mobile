@@ -13,6 +13,7 @@ import com.nousresearch.hermes.ui.onboarding.InstallScreen
 import com.nousresearch.hermes.ui.onboarding.MainScreen
 import com.nousresearch.hermes.ui.onboarding.SetupScreen
 import com.nousresearch.hermes.ui.onboarding.SplashScreen
+import com.nousresearch.hermes.ui.onboarding.TermuxPreflightScreen
 import com.nousresearch.hermes.ui.onboarding.WelcomeScreen
 import com.nousresearch.hermes.ui.theme.HermesAppTheme
 import kotlinx.coroutines.MainScope
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 when (state) {
                     HermesApi.AppState.Splash -> SplashScreen(hermes)
                     HermesApi.AppState.Welcome -> WelcomeScreen(hermes)
+                    HermesApi.AppState.TermuxPreflight -> TermuxPreflightScreen(hermes)
                     HermesApi.AppState.Installing -> InstallScreen(hermes)
                     HermesApi.AppState.Setup -> SetupScreen(hermes)
                     HermesApi.AppState.Main -> MainScreen(hermes) { controller ->

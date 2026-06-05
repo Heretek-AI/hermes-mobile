@@ -89,7 +89,7 @@ fun WelcomeScreen(hermes: HermesApi) {
         ) {
             if (termux.installed) {
                 OutlinedButton(
-                    onClick = { hermes.setAppState(HermesApi.AppState.Installing) },
+                    onClick = { hermes.setAppState(HermesApi.AppState.TermuxPreflight) },
                 ) { Text("Continue") }
             } else {
                 Button(

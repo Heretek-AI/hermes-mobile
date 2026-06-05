@@ -75,6 +75,7 @@ class HermesApi(private val context: Context) {
     val installer: HermesInstaller = HermesInstaller(context)
     val supervisor: GatewaySupervisor = GatewaySupervisor(context, installer)
     val sshTunnel: SshTunnelService = SshTunnelService(context)
+    val termuxRunner: TermuxRunner = TermuxRunner(context)
 
     private val database: HermesDatabase = HermesDatabase.get(context)
 
@@ -129,6 +130,7 @@ class HermesApi(private val context: Context) {
     enum class AppState {
         Splash,    // cold-start probe (install check + version fetch)
         Welcome,   // 3 CTAs: remote / Termux / bundled
+        TermuxPreflight, // 5-step preflight wizard (Termux install / RUN_COMMAND grant / allow-external-apps / verify / install)
         Installing, // 8-stage install in progress
         Setup,     // first-launch config: provider + model + profile
         Main,      // 5-tab bottom nav
@@ -270,6 +272,29 @@ class HermesApi(private val context: Context) {
         context.startActivity(intent)
     }
 
+    /**
+     * True if the user has granted our package the
+     * `com.termux.permission.RUN_COMMAND` permission in Android
+     * Settings. Termux declares this as a custom (non-framework)
+     * permission that gates which apps can dispatch the
+     * `com.termux.RUN_COMMAND` IPC into Termux's RunCommandService.
+     * Used by
+     * [com.nousresearch.hermes.ui.onboarding.TermuxPreflightScreen]
+     * to drive the wizard's grant step.
+     */
+    fun hasTermuxRunCommandPermission(): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(
+                TermuxProbe.TERMUX_PACKAGE,
+                android.content.pm.PackageManager.GET_PERMISSIONS,
+            )
+            context.checkSelfPermission("com.termux.permission.RUN_COMMAND") ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     data class SshConfigView(
         val host: String,
         val port: Int,
@@ -329,6 +354,10 @@ class HermesApi(private val context: Context) {
         val installed: Boolean,
         val hasApi: Boolean,
         val version: String?,
+        // Phase 9: populated by getTermuxStatusWithProperties(); null
+        // from the non-suspend getTermuxStatus() because reading the
+        // file requires a Termux shell dispatch.
+        val allowExternalApps: Boolean? = null,
     )
 
     fun getTermuxStatus(): TermuxStatus = TermuxStatus(
@@ -336,6 +365,59 @@ class HermesApi(private val context: Context) {
         hasApi = TermuxProbe.isTermuxApiInstalled(context),
         version = TermuxProbe.termuxVersion(context),
     )
+
+    /**
+     * Suspend variant of [getTermuxStatus] that also reads the
+     * `allow-external-apps` value from `~/.termux/termux.properties`
+     * by dispatching a `cat` command through [termuxRunner]. Used by
+     * [com.nousresearch.hermes.ui.onboarding.TermuxPreflightScreen]
+     * to drive the preflight wizard's verify step.
+     */
+    suspend fun getTermuxStatusWithProperties(): TermuxStatus {
+        val base = getTermuxStatus()
+        val allow = if (base.installed) getTermuxProperty("allow-external-apps") else null
+        return base.copy(allowExternalApps = (allow == "true"))
+    }
+
+    /**
+     * Read a single property from `~/.termux/termux.properties`.
+     * Implementation: dispatch `cat ~/.termux/termux.properties` via
+     * [termuxRunner.runAndWait] and regex-parse `^key=val$` lines.
+     * Returns null if Termux isn't installed, the file is missing,
+     * the dispatch fails, or the key is absent. The file is
+     * typically < 2KB so no caching is needed.
+     */
+    suspend fun getTermuxProperty(key: String): String? {
+        if (!TermuxProbe.isTermuxInstalled(context)) return null
+        val result = termuxRunner.runAndWait("cat ~/.termux/termux.properties 2>/dev/null")
+        if (result.exitCode != 0) return null
+        val escapedKey = Regex.escape(key)
+        return Regex("^$escapedKey=(.*)$", RegexOption.MULTILINE)
+            .find(result.stdout)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+    }
+
+    /**
+     * Idempotently write `allow-external-apps=true` to
+     * `~/.termux/termux.properties` and reload Termux's settings.
+     * Uses the same one-liner the wizard shows the user, so the
+     * auto-set and manual-display paths share one source of truth
+     * (see [TermuxPreflightCmd.SET_ALLOW_EXTERNAL_APPS_CMD]).
+     *
+     * Returns the raw [BundledPythonRunner.PythonResult] so the
+     * caller can distinguish "dispatch rejected" (security exception
+     * or `plugin_action_disabled` from a chicken-and-egg state) from
+     * "command ran but verify failed". Callers should treat success
+     * as `exitCode == 0` AND a follow-up [getTermuxProperty] read of
+     * `allow-external-apps` returning `"true"`.
+     */
+    suspend fun ensureAllowExternalApps(): BundledPythonRunner.PythonResult {
+        return termuxRunner.runAndWait(
+            "${TermuxPreflightCmd.SET_ALLOW_EXTERNAL_APPS_CMD} && termux-reload-settings"
+        )
+    }
 
     fun checkInstall(): HermesInstaller.CheckResult = installer.checkInstall()
 

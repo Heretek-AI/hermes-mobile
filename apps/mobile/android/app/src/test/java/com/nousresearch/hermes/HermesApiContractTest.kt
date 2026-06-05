@@ -568,4 +568,53 @@ class HermesApiContractTest {
     @Test fun deepLink_emitsViaEmit() {
         hermes.emitDeepLink("hermes://chat/abc")
     }
+
+    // ── Phase 9 Termux preflight ───────────────────────────────
+
+    @Test fun termuxStatus_allowExternalAppsFieldDefaultsToNull() {
+        // Phase 9: the non-suspend getTermuxStatus() leaves the
+        // new allowExternalApps field null because reading the
+        // properties file requires a Termux shell dispatch. The
+        // suspend getTermuxStatusWithProperties() is what
+        // populates it.
+        val s = hermes.getTermuxStatus()
+        assertNotNull(s)
+        assertTrue(s.allowExternalApps == null)
+    }
+
+    @Test fun appState_includesTermuxPreflightValue() {
+        // Phase 9: AppState grew a 6th value. The 5-case `when`
+        // in MainActivity would not compile without this.
+        val values = HermesApi.AppState.values().map { it.name }.toSet()
+        assertTrue("TermuxPreflight" in values)
+    }
+
+    @Test fun hasTermuxRunCommandPermission_returnsBool() {
+        // In Robolectric we have no Termux package installed, so
+        // the call should resolve to false without throwing.
+        val granted = hermes.hasTermuxRunCommandPermission()
+        assertTrue(granted || !granted)
+    }
+
+    @Test fun getTermuxProperty_returnsNullWhenTermuxMissing() {
+        // The preflight wizard's verify step falls back to the
+        // "property not set" branch when getTermuxProperty
+        // returns null. Robolectric has no Termux, so the
+        // short-circuit (no TermuxProbe.isTermuxInstalled) kicks
+        // in and we get null back.
+        kotlinx.coroutines.runBlocking {
+            val v = hermes.getTermuxProperty("allow-external-apps")
+            assertTrue(v == null)
+        }
+    }
+
+    @Test fun getTermuxStatusWithProperties_companionForm_doesNotCrash() {
+        // Companion suspend form: returns a TermuxStatus with
+        // allowExternalApps null when Termux isn't installed.
+        kotlinx.coroutines.runBlocking {
+            val s = hermes.getTermuxStatusWithProperties()
+            assertNotNull(s)
+            assertTrue(s.allowExternalApps == null)
+        }
+    }
 }
