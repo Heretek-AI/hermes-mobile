@@ -13,7 +13,7 @@
         <string name="termux_install_action">Open F-Droid</string>
         <string name="hermes_agent_pinned_sha">e7bc6189cf185f9c223a4428115147e483d9ff89</string>
         <string name="termux_install_github">Or get it from GitHub Releases</string>
-        <string name="termux_permission_needed_title">Termux permission needed</string>
-        <string name="termux_permission_needed_message">Hermes needs permission to run commands inside Termux. Grant the “Run commands inside Termux environment” permission in App info → Additional permissions, then retry. If you still see this after granting, open Termux and add allow-external-apps=true to ~/.termux/termux.properties, then run termux-reload-settings.</string>
+        <string name="termux_permission_needed_title">Termux setup needed</string>
+        <string name="termux_permission_needed_message">Hermes needs four things from your Termux install before the local install can run. Do these in order, then tap Retry:\n\n1. Install Termux and (recommended) Termux:API from F-Droid. Termux:API powers the battery / sensor / telephony features Hermes uses after install.\n\n2. Grant the “Run commands inside Termux environment” permission: tap Open App Settings → Additional permissions → enable it.\n\n3. In Termux, enable external apps: long-press the Termux screen → Properties → toggle “allow-external-apps” (or run `echo allow-external-apps=true >> ~/.termux/termux.properties` then `termux-reload-settings`).\n\n4. Return to Hermes and tap Retry.</string>
         <string name="termux_permission_open_settings">Open App Settings</string>
 </resources>

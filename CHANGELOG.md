@@ -65,6 +65,68 @@ shipped artefact. Summary by phase:
 - Unsigned universal APK (F-Droid rebuild).
 - `latest.json` for the in-app updater.
 
+### v0.1.0 live-test findings (fixed in `3276591`)
+
+Tested the v0.1.0 release APK on `emulator-5554` (Pixel 10 Pro XL,
+Android 16) with Termux 0.119.0-beta.3 + the user's OPENAI_BASE_URL /
+OPENAI_API_KEY / MiniMax-M3 setup. Four real UI/UX bugs not
+caught by the CI smoke tests; the release APK was effectively
+unusable until these fixes:
+
+1. **Sentry crash on launch (CRITICAL).** Sentry's auto-registered
+   `SentryInitProvider` runs at `installContentProviders` time
+   (before `HermesApp.onCreate`) and threw
+   `IllegalArgumentException: DSN is required` when
+   `BuildConfig.SENTRY_DSN` was empty (the open-source build
+   case). Fix: placeholder `io.sentry.dsn` meta-data in the
+   manifest.
+2. **Welcome/Install Termux detection mismatch (HIGH).** Welcome
+   used `isTermuxInstalled()` (just Termux app); Install used
+   `isInstalled()` (Termux + Termux:API). Users with only
+   Termux saw "Termux detected" on Welcome, then
+   `no_python_backend` on Install. Fix: backend selection now
+   uses `isTermuxInstalled()`.
+3. **Empty install error message (HIGH).** `TermuxResultReceiver`
+   had a guard `termuxErr != RESULT_OK && result.exitCode == 0`
+   that silently dropped the errmsg in the case where Termux
+   refused to dispatch (`err=2`, `exitCode=-1`). Fix: always
+   surface `errmsg` when `termuxErr != RESULT_OK`.
+4. **Stale validation error on SetupScreen (MEDIUM).** The
+   "Please enter a profile name" error didn't clear when the
+   user typed. Fix: clear the error in the field's
+   `onValueChange` once the value becomes non-blank.
+
+### Termux local-install prerequisite (user must do this once)
+
+The local-install path (the "Install locally (Termux)" CTA on
+the Welcome screen) requires four user-side configuration
+steps before the install can proceed. These are surfaced in
+the `Termux setup needed` card on the Install screen:
+
+1. **Install Termux and Termux:API from F-Droid.** Termux:API
+   is recommended (not strictly required for the basic Python
+   install) because the rest of `HermesApi` uses it for
+   battery / sensor / telephony features. The v0.1.0 release
+   APK works without Termux:API; only the `battery`,
+   `sensors`, and `telephony` features degrade.
+2. **Grant the `Run commands inside Termux environment`
+   permission** in Android Settings → Apps → Hermes Agent →
+   Additional permissions. This is a signature-level
+   permission that the user must grant manually (Termux is
+   signed with its own key; Hermes is signed with a different
+   key, so the OS won't auto-grant).
+3. **Enable `allow-external-apps=true`** in Termux's
+   properties: long-press the Termux screen → Properties →
+   toggle "allow-external-apps", or run
+   `echo allow-external-apps=true >> ~/.termux/termux.properties`
+   then `termux-reload-settings`. Without this, Termux's
+   `RunCommandService` refuses the install's
+   `com.termux.RUN_COMMAND` intents.
+4. **Return to Hermes and tap Retry.** The install resumes
+   from the failed stage (no restart needed; the marker file
+   `~/.hermes/.repo-cloned` short-circuits stage 3 if the
+   clone already succeeded).
+
 ### Known v0.1.0 limitations (deferred to v0.2.0)
 
 - Skill detail screen: `hermes://skill/<name>` lands on the
