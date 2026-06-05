@@ -64,9 +64,19 @@ cp android-runner/app/build.gradle.template apps/mobile/android/app/build.gradle
 #    that F-Droid packages. `-Phermes.fdroid=true` bypasses
 #    the v0.1.0 release-pipeline signing fail-fast (which
 #    would otherwise reject the empty keystore.properties).
-echo "→ gradle assembleRelease"
+#
+#    v0.1.0: pass `clean assembleRelease` so a fresh build
+#    runs. The previous `assembleRelease` (for the GitHub
+#    Release) leaves signed APKs in build/outputs/apk/release/.
+#    The F-Droid build re-evaluates the signing config (which
+#    is null for F-Droid) and the resulting packageRelease
+#    task overwrites the per-ABI APKs but the universal APK
+#    packaging task is UP-TO-DATE-skipped, so the universal
+#    APK file disappears. A `clean` forces a from-scratch
+#    build that produces all 4 APKs (per-ABI + universal).
+echo "→ gradle clean assembleRelease"
 cd apps/mobile/android
-./gradlew assembleRelease --no-daemon \
+./gradlew clean assembleRelease --no-daemon \
   --no-build-cache \
   --scan \
   -Pandroid.injected.testOnly=false \
