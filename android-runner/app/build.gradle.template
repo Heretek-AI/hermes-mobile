@@ -215,15 +215,20 @@ android {
             // Phase 6: sign release builds with the release key.
             // Debug builds use the auto-generated debug key (the
             // default).
-            // v0.1.0: F-Droid builds pass -Phermes.fdroid=true
-            // and deliberately leave signingConfig unset (so
-            // the APK is unsigned; F-Droid re-signs externally).
-            // Without this branch, AGP's packageRelease fails
-            // with 'SigningConfig "release" is missing required
-            // property "storeFile"' because the empty
-            // keystore.properties makes signingConfigs.release
-            // invalid even though the field is referenced.
-            if (!project.findProperty('hermes.fdroid')) {
+            // v0.1.0: F-Droid builds pass -Phermes.fdroid=true.
+            // We use the AGP-bundled debug signingConfig (which
+            // points at ~/.android/debug.keystore) so AGP's
+            // splits.abi pipeline runs and produces per-ABI +
+            // universal APKs. Without a real signingConfig, AGP
+            // silently skips the splits and packageRelease
+            // produces a single default APK — which means
+            // app-universal-release.apk is never written and
+            // the F-Droid build fails to find it. The APK is
+            // signed with the well-known debug key, which F-Droid
+            // re-signs with their own key before publishing.
+            if (project.findProperty('hermes.fdroid')) {
+                signingConfig signingConfigs.debug
+            } else {
                 signingConfig signingConfigs.release
             }
             minifyEnabled true
