@@ -215,7 +215,17 @@ android {
             // Phase 6: sign release builds with the release key.
             // Debug builds use the auto-generated debug key (the
             // default).
-            signingConfig signingConfigs.release
+            // v0.1.0: F-Droid builds pass -Phermes.fdroid=true
+            // and deliberately leave signingConfig unset (so
+            // the APK is unsigned; F-Droid re-signs externally).
+            // Without this branch, AGP's packageRelease fails
+            // with 'SigningConfig "release" is missing required
+            // property "storeFile"' because the empty
+            // keystore.properties makes signingConfigs.release
+            // invalid even though the field is referenced.
+            if (!project.findProperty('hermes.fdroid')) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
