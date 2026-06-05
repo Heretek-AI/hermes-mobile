@@ -10,6 +10,29 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- v0.1.0 live test fix: Sentry's auto-registered
+             SentryInitProvider runs at installContentProviders
+             time (before HermesApp.onCreate) and throws
+             "DSN is required" when BuildConfig.SENTRY_DSN is
+             empty (the open-source build case). Provide a
+             placeholder DSN meta-data here so the auto-init
+             succeeds. The placeholder points at an invalid
+             host; Sentry will never actually send events to
+             it. When the user opts in via Settings AND a real
+             DSN is configured at build time, HermesApp.
+             maybeInitSentry() calls SentryAndroid.init with
+             the real DSN, which takes precedence over this
+             meta-data value. The placeholder format is
+             syntactically valid (publicKey@host/project) so
+             Sentry's DSN parser accepts it.
+        -->
+        <meta-data
+            android:name="io.sentry.dsn"
+            android:value="https://00000000000000000000000000000000@placeholder.invalid/0" />
+        <meta-data
+            android:name="io.sentry.environment"
+            android:value="release" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"

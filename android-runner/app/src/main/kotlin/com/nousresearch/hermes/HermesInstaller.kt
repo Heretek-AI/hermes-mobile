@@ -161,7 +161,25 @@ class HermesInstaller(private val context: Context) {
 
     fun currentBackend(): Backend {
         return when {
-            TermuxProbe.isInstalled(context) -> Backend.TERMUX
+            // v0.1.0 live test fix: changed from
+            // TermuxProbe.isInstalled(context) — which requires
+            // BOTH com.termux AND com.termux.api — to
+            // TermuxProbe.isTermuxInstalled(context), which
+            // requires only the Termux app. Termux:API is a
+            // separate package for specific features
+            // (battery, sensors, telephony) and is not needed
+            // for the Python install itself. The previous
+            // logic left the user stuck: the WelcomeScreen
+            // showed "Termux 0.119.0-beta.3 detected" but the
+            // install failed with "Neither Termux nor bundled
+            // Python is available" when Termux:API wasn't
+            // installed.
+            //
+            // Termux:API is still checked at the feature level
+            // (e.g. readBatteryStatus in HermesApi), so a user
+            // who hasn't installed it just gets a graceful
+            // fallback for those specific features.
+            TermuxProbe.isTermuxInstalled(context) -> Backend.TERMUX
             bundled.isAvailable() -> Backend.BUNDLED
             else -> Backend.NONE
         }

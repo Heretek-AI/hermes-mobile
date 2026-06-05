@@ -98,7 +98,19 @@ fun SetupScreen(hermes: HermesApi) {
 
         OutlinedTextField(
             value = profileName,
-            onValueChange = { profileName = it.replace(" ", "_") },
+            onValueChange = {
+                profileName = it.replace(" ", "_")
+                // v0.1.0 live test fix: clear any prior
+                // "Please enter a profile name" validation
+                // error the moment the user types. The error
+                // was sticking around even after the field was
+                // filled (because error is set on the Continue
+                // onClick, not on field change), so the user
+                // saw a stale red message.
+                if (error == "Please enter a profile name" && profileName.isNotBlank()) {
+                    error = null
+                }
+            },
             label = { Text("Profile name") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),

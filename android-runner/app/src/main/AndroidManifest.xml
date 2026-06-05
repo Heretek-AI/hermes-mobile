@@ -1,128 +1,163 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  AndroidManifest additions for the HermesAPIPlugin and the
-  GatewayForegroundService / BootReceiver. This file is *merged* into
-  the Capacitor-generated AndroidManifest.xml by `cap sync android`.
-  Do not put application-level entries here; only <service>,
-  <receiver>, and <uses-permission> tags that the merge step will
-  combine with the default Capacitor manifest.
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-  Run `bash apps/mobile/scripts/setup-android.sh` after the first
-  `npx cap add android` to copy this fragment into the generated
-  project, and to register HermesAPIPlugin in MainActivity.
--->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.nousresearch.hermes"
-    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:name=".HermesApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
 
-    <!-- Network for chat / API / remote mode -->
+        <!-- v0.1.0 live test fix: Sentry's auto-registered
+             SentryInitProvider runs at installContentProviders
+             time (before HermesApp.onCreate) and throws
+             "DSN is required" when BuildConfig.SENTRY_DSN is
+             empty (the open-source build case). Provide a
+             placeholder DSN meta-data here so the auto-init
+             succeeds. The placeholder points at an invalid
+             host; Sentry will never actually send events to
+             it. When the user opts in via Settings AND a real
+             DSN is configured at build time, HermesApp.
+             maybeInitSentry() calls SentryAndroid.init with
+             the real DSN, which takes precedence over this
+             meta-data value. The placeholder format is
+             syntactically valid (publicKey@host/project) so
+             Sentry's DSN parser accepts it.
+        -->
+        <meta-data
+            android:name="io.sentry.dsn"
+            android:value="https://00000000000000000000000000000000@placeholder.invalid/0" />
+        <meta-data
+            android:name="io.sentry.environment"
+            android:value="release" />
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Phase 1.4: hermes:// deep links land here so
+                 MainActivity.onNewIntent can route them through
+                 HermesApi.handleOAuthCallback / emitDeepLink.
+                 Plan §1.4 / §5.5: this filter must be on
+                 MainActivity, not on OAuthBrowserActivity, so the
+                 user-visible activity is the one that receives
+                 the URI. -->
+            <intent-filter android:label="Hermes OAuth callback">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hermes" android:host="oauth-callback" />
+            </intent-filter>
+
+            <!-- Phase 5.3: hermes://chat/<sessionId> and
+                 hermes://skill/<name> URIs route into the nav
+                 graph. See MainActivity.handleIntent for the
+                 dispatch. -->
+            <intent-filter android:label="Hermes deep links">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hermes" />
+            </intent-filter>
+
+            <!-- Phase 1.3: ACTION_SEND text-share-sheet — the
+                 user shares text from another app; we pre-fill
+                 the chat input. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- Phase A: BootReceiver was previously referenced from
+             HermesAPIPlugin but never registered in the manifest.
+             Required for the "start on boot" FGS-launch flow. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Phase A: GatewayForegroundService hosts the python
+             gateway subprocess. foregroundServiceType="specialUse"
+             with a PROPERTY_SPECIAL_USE_FGS_SUBTYPE justification is
+             the Android 14+ required pattern. -->
+        <service
+            android:name=".GatewayForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Hosts the Hermes agent gateway subprocess; long-running; user-initiated" />
+        </service>
+
+        <!-- v0.1.0: SshTunnelService is a plain helper class
+             (instantiated by HermesApi as `SshTunnelService(context)`),
+             not a real android.app.Service. The previous manifest
+             entry was a Phase A leftover that the AGP instantiability
+             check rejected. The class is still used as a helper for
+             managing the SSH child process; only the manifest
+             registration is dropped. -->
+
+        <!-- Phase A: OAuthBrowserActivity generates a CSRF state
+             token, saves it to hermes_oauth prefs, then launches
+             the system browser against the auth URL. The hermes://
+             deep link brings the user back to MainActivity (see
+             the intent-filter on MainActivity above) which routes
+             the URI through HermesApi.handleOAuthCallback. -->
+        <activity
+            android:name=".OAuthBrowserActivity"
+            android:exported="true" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Foreground service — specialUse for long-running agent gateway -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- Phase 4: file picker + voice capture + share + biometric -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-
-    <!--
-      Workstream C: Termux RUN_COMMAND IPC. We dispatch shell
-      commands into Termux's $PREFIX via RunCommandService and get
-      stdout/stderr/exit-code back via RUN_COMMAND_PENDING_INTENT
-      (requires Termux >= 0.109). The signature-level permission
-      must be requested here and granted by the user once in
-      Android Settings -> App info -> Additional permissions.
-    -->
-    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
-
-    <!--
-      Workstream C: package visibility on Android 11+ (API 30+).
-      Without this <queries> block, PackageManager.getPackageInfo
-      (used by TermuxProbe.isTermuxInstalled) throws
-      NameNotFoundException even when Termux is installed,
-      defeating the entire backend-selection logic in
-      HermesInstaller.currentBackend(). We declare visibility for
-      both the Termux package itself and the RUN_COMMAND intent
-      action (the latter is what we actually dispatch).
-    -->
-    <queries>
-        <package android:name="com.termux" />
-        <package android:name="com.termux.api" />
-        <intent>
-            <action android:name="com.termux.RUN_COMMAND" />
-        </intent>
-    </queries>
-
-    <!--
-      Long-running AI gateway foreground service. The
-      `foregroundServiceType="specialUse"` requires a justification
-      property, declared inline below. Android 14+ (UPSIDE_DOWN_CAKE)
-      strictly enforces that the runtime ServiceInfo type matches the
-      manifest; we pass `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` from
-      GatewayForegroundService.startInForeground().
-    -->
-    <service
-        android:name=".GatewayForegroundService"
-        android:enabled="true"
-        android:exported="false"
-        android:foregroundServiceType="specialUse">
-        <property
-            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-            android:value="Long-running AI agent gateway with HTTP/SSE chat, scheduled cron tasks, and 16 messaging platform integrations. Killing the process terminates the user's assistant and breaks the user-facing chat UI." />
-    </service>
-
-    <!--
-      Boot autostart receiver. Opt-in: only fires the foreground
-      service if the user has flipped the "start on boot" toggle in
-      the renderer's Settings screen. Must be exported so the system
-      can deliver the BOOT_COMPLETED broadcast; we don't accept any
-      other actions.
-    -->
-    <receiver
-        android:name=".BootReceiver"
-        android:enabled="true"
-        android:exported="true"
-        tools:ignore="ExportedReceiver">
-        <intent-filter android:priority="1000">
-            <action android:name="android.intent.action.BOOT_COMPLETED" />
-            <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-        </intent-filter>
-    </receiver>
-
-    <!--
-      v0.1.0: SshTunnelService is a plain helper class
-      (instantiated by HermesApi as `SshTunnelService(context)`),
-      not a real android.app.Service. The previous manifest entry
-      was a Phase A leftover that AGP's instantiability check
-      rejected. The class is still used as a helper for managing
-      the SSH child process; only the manifest registration is
-      dropped. The Kotlin class itself is unchanged.
-    -->
-
-    <!--
-      Phase A: OAuth device-code browser activity. Generates a CSRF
-      state token, saves it to hermes_oauth prefs, launches the
-      system browser against the auth URL. The `hermes://oauth-
-      callback?code=...&state=...` deep link is delivered to
-      MainActivity (which carries the intent-filter in the live
-      manifest's <application> block); MainActivity.onNewIntent
-      routes it to HermesApi.handleOAuthCallback. We do NOT
-      attach the intent-filter here — the device-code flow's
-      target is MainActivity, not this activity.
-    -->
-    <activity
-        android:name=".OAuthBrowserActivity"
-        android:enabled="true"
-        android:exported="true" />
-
+        <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+        <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+        <uses-permission android:name="android.permission.WAKE_LOCK" />
+        <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+        <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+        <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+        <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+        <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+        <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+        <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+        <queries>
+            <package android:name="com.termux" />
+            <package android:name="com.termux.api" />
+            <intent>
+                <action android:name="com.termux.RUN_COMMAND" />
+            </intent>
+        </queries>
 </manifest>

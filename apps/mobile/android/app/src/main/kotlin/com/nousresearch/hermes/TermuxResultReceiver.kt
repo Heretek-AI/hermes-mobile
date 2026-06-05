@@ -59,14 +59,25 @@ internal class TermuxResultReceiver(private val sessionId: Int) : BroadcastRecei
         // diagnostic stderr so the install UI's existing failure path
         // surfaces them verbatim.
         val termuxErr = bundle?.getInt(KEY_ERR, RESULT_OK) ?: RESULT_OK
-        val finalResult = if (termuxErr != RESULT_OK && result.exitCode == 0) {
-            val errmsg = bundle?.getString(KEY_ERRMSG) ?: "Termux returned err=$termuxErr"
-            result.copy(
-                exitCode = if (termuxErr != 0) termuxErr else -1,
-                stderr = if (result.stderr.isEmpty()) errmsg else "${result.stderr}\n$errmsg",
-            )
-        } else {
-            result
+        val errmsg = bundle?.getString(KEY_ERRMSG)
+        val finalResult = when {
+            termuxErr != RESULT_OK -> {
+                // v0.1.0 live test fix: the previous guard
+                // `termuxErr != RESULT_OK && result.exitCode == 0`
+                // silently dropped the errmsg in the case where
+                // Termux refused to dispatch the command (err=2,
+                // "plugin_action_disabled") and the result bundle
+                // also had exitCode=-1. The install UI then
+                // surfaced "Install failed:" with no actionable
+                // detail. Always surface errmsg when Termux reports
+                // a dispatch-level error, regardless of result.exitCode.
+                val msg = errmsg ?: "Termux returned err=$termuxErr (the `allow-external-apps=true` property in ~/.termux/termux.properties may be off; enable it in Termux settings and retry)"
+                result.copy(
+                    exitCode = if (termuxErr != 0) termuxErr else -1,
+                    stderr = if (result.stderr.isEmpty()) msg else "${result.stderr}\n$msg",
+                )
+            }
+            else -> result
         }
         Log.d(TAG, "result sessionId=$sessionId exitCode=${finalResult.exitCode} err=$termuxErr stdoutBytes=${finalResult.stdout.length} stderrBytes=${finalResult.stderr.length}")
         TermuxResultRegistry.deliver(sessionId, finalResult)
